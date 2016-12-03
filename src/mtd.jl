@@ -1,5 +1,12 @@
 module mtd
 
-# package code goes here
+## distributed packages
+using Distributions
+using Iterators
+
+## personal packages
+using BayesInference
+
+include("general.jl")
 
 end # module
