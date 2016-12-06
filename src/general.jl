@@ -7,7 +7,7 @@
 function create_froms(K::UInt16, R::UInt16)
   x = UInt16(1):K
   xx = collect(product(repeated(x,Int(R))...))
-  xx
+  (xx, length(xx))
 end
 # similarly,
 # x = collect(CartesianRange((2,2)))
@@ -16,11 +16,12 @@ end
 # A[x[2]]
 
 ### creating a transition array
-K = 3
-R = 3
-A = zeros(Float64, repeated(K,R)...)
-collect(CartesianRange(size(A)))
+# K = 3
+# R = 3
+# A = zeros(Float64, repeated(K,R)...)
+# collect(CartesianRange(size(A)))
 
+# try constructing the mtd transition array with comprehension :)
 
 # froms = create_froms(UInt16(3), UInt16(3))
 # A = reshape(collect(1:36)*1.0, (3,3,4))
