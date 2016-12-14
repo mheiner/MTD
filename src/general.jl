@@ -1,5 +1,7 @@
 # general.jl
 
+export create_froms;
+
 ## expand.grid() from R
 # using Iterators
 # collect(product([1 2 3],[1 2]))
