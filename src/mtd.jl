@@ -1,4 +1,4 @@
-module mtd
+module MTD
 
 ## distributed packages
 using Distributions
