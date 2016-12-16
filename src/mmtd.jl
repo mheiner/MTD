@@ -47,6 +47,23 @@ end
 
 
 """
+
+"""
+function symmetricPrior_mmtd(size_Λ::Float64, size_λ::Float64, size_Q::Float64,
+  R::Int, M::Int, K::Int, λ_indx::Tuple)
+
+  # λ_indx[2] contains a tuple of lengths of λ vectors
+
+  α0_Λ = fill( size_Λ / float(M), M)
+  α0_λ = [ fill( size_λ / float(λ_indx[2][m]), λ_indx[2][m] ) for m in 1:M ]
+  a0_Q = size_Q / float(K)
+  α0_Q = [ fill( a0_Q, (K, K^(m)) ) for m in 1:M ]
+
+  (α0_Λ, α0_λ, α0_Q)
+end
+
+
+"""
     rpost_lΛ_mmtd(α0_Λ, Z, M)
 
 Currently counts up whatever Z's it gets, rather than excluding the first R of them.
@@ -119,4 +136,57 @@ function rpost_lQ_mmtd(S::Vector{Int}, TT::Int, α0_Q::Vector{Matrix{Float64}},
   end
 
   lQ_out
+end
+
+
+"""
+    rpost_Z_mmtd(S, TT, lΛ, ζ, lQ, λ_indx, R, M)
+"""
+function rpost_Z_mmtd(S::Vector{Int}, TT::Int,
+  lΛ::Vector{Float64}, ζ::Matrix{Int}, lQ::Vector{Array{Float64}},
+  λ_indx::Tuple, R::Int, M::Int)
+
+  Z_out = Vector{Float64}(TT-R)
+  lp = Vector{Float64}(M)
+
+  for i in 1:(TT-R)
+    tt = i + R
+    Slagrev_now = S[range(tt-1, -1, R)]
+    for m in 1:M
+      lp[m] = lΛ[m] + lQ[m][ append!(copy(S[tt]), copy( Slagrev_now[λ_indx[1][m][ ζ[i,m] ]] ))... ]
+    end
+    Z_out[i] = StatsBase.sample(WeightVec(exp(lp)))
+  end
+
+  Z_out
+end
+
+
+"""
+    rpost_ζ_mmtd(S, TT, lλ, Z, lQ, λ_indx, R, M, K)
+"""
+function rpost_Z_mmtd(S::Vector{Int}, TT::Int,
+  lλ::Vector{Vector{Float64}}, Z::Vector{Int}, lQ::Vector{Array{Float64}},
+  λ_indx::Tuple, R::Int, M::Int, K::Int)
+
+  λ_lens = copy(λ_indx[2])
+  ζ_out = Matrix{Int}(TT-R,M)
+
+  for i in 1:(TT-R)
+    tt = i + R
+    Slagrev_now = S[range(tt-1, -1, R)]
+    for m in 1:M
+      if Z[tt] == m
+        for j in 1:λ_lens[m]
+          lp = Vector{Float64}(λ_lens[m])
+          lp[j] = lλ[m][j] + lQ[m][ append!(copy(S[tt]), copy(Slagrev_now[λ_indx[1][m][j]]))... ]
+        end
+        ζ_out[i,m] = StatsBase.sample(WeightVec( exp(lp) ))
+      else
+        ζ_out[i,m] = StatsBase.sample(WeightVec( exp(lλ[m]) ))
+      end
+    end
+  end
+
+  ζ_out
 end
