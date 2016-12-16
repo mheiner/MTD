@@ -1,5 +1,5 @@
 
-using mtd
+using MTD
 
 const R = 3
 const M = 2
