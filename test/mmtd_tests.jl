@@ -1,4 +1,4 @@
-
+using BayesInference
 using MTD
 
 const R = 3
