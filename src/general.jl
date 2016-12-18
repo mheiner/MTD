@@ -61,7 +61,7 @@ Returns a tensor with counts of observed `R`th order transitions in `S`
 ```
 """
 function count_trans_R(S::Vector{Int}, K::Int, R::Int)
-    assert(minimum(S) >= K && maximum(S) <= K)
+    assert(minimum(S) >= 1 && maximum(S) <= K)
     N = zeros(Int, (collect(repeated(K,R+1))...))
 
     for tt in (R+1):length(S)
