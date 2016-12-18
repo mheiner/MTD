@@ -42,8 +42,8 @@ end
 ```
 """
 function build_λ_indx(R::Int, M::Int)
-  indxs = tuple( [ tuple(Combinatorics.combinations(1:R, m)...) for m in 1:M ]... )
-  lens = tuple( [ length(xx) for xx in indxs ]... )
+  indxs = [ collect(Combinatorics.combinations(1:R, m)) for m in 1:M ]
+  lens = [ length(xx) for xx in indxs ]
   (indxs, lens)
 end
 
@@ -54,20 +54,22 @@ end
 function sim_mmtd(TT::Int, nburn::Int, R::Int, M::Int, K::Int, λ_indx::Tuple,
   Λ::Vector{Float64}, λ::Vector{Vector{Float64}}, Q::Vector{Array{Float64}})
 
-  Z = [ StatsBase.sample(WeightVec(Λ)) for i in 1:(nburn+TT-R) ]
-  ζ = [ StatsBase.sample(WeightVec(λ[m])) for i in 1:(nburn+TT-R), m in 1:M ]
+  Nsim = nburn + TT
 
-  S = Vector{Int}(nburn+TT)
+  Z = [ StatsBase.sample(WeightVec(Λ)) for i in 1:(Nsim-R) ]
+  ζ = [ StatsBase.sample(WeightVec(λ[m])) for i in 1:(Nsim-R), m in 1:M ]
+
+  S = Vector{Int}(Nsim)
   S[1:R] = StatsBase.sample(1:K, R)
 
-  for tt in (R+1):(nburn+TT)
+  for tt in (R+1):(Nsim)
     i = tt - R
     Slagrev_now = S[range(tt-1, -1, R)]
     pvec = copy( Q[Z[i]][:, Slagrev_now[λ_indx[1][Z[i]][ζ[i,Z[i]]]]...] )
     S[tt] = StatsBase.sample(WeightVec( pvec ))
   end
 
-  S[(nburn+1):TT], Z[(nburn+1):(TT-R)], ζ[(nburn+1):(TT-R),:]
+  S[(nburn+1):(Nsim)], Z[(nburn+1):(Nsim-R)], ζ[(nburn+1):(Nsim-R),:]
 end
 
 
