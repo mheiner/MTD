@@ -1,7 +1,9 @@
 # mmtd.jl
 
 export ParamsMMTD, PriorMMTD, ModMMTD,
-  build_λ_indx;
+  build_λ_indx, sim_mmtd, symmetricPrior_mmtd,
+  rpost_lΛ_mmtd, rpost_lλ_mmtd, counttrans_mmtd, rpost_lQ_mmtd,
+  rpost_Z_mmtd, rpost_ζ_mmtd;
 
 type ParamsMMTD
   lΛ::Vector{Float64}
@@ -47,7 +49,30 @@ end
 
 
 """
+    sim_mmtd(TT, nburn, R, M, K, λ_indx, Λ, λ, Q)
+"""
+function sim_mmtd(TT::Int, nburn::Int, R::Int, M::Int, K::Int, λ_indx::Tuple,
+  Λ::Vector{Float64}, λ::Vector{Vector{Float64}}, Q::Vector{Array{Float64}})
 
+  Z = [ StatsBase.sample(WeightVec(Λ)) for i in 1:(nburn+TT-R) ]
+  ζ = [ StatsBase.sample(WeightVec(λ[m])) for i in 1:(nburn+TT-R), m in 1:M ]
+
+  S = Vector{Int}(nburn+TT)
+  S[1:R] = StatsBase.sample(1:K, R)
+
+  for tt in (R+1):(nburn+TT)
+    i = tt - R
+    Slagrev_now = S[range(tt-1, -1, R)]
+    pvec = copy( Q[Z[i]][:, Slagrev_now[λ_indx[1][Z[i]][ζ[i,Z[i]]]]...] )
+    S[tt] = StatsBase.sample(WeightVec( pvec ))
+  end
+
+  S[(nburn+1):TT], Z[(nburn+1):(TT-R)], ζ[(nburn+1):(TT-R),:]
+end
+
+
+"""
+    symmetricPrior_mmtd(size_Λ, size_λ, size_Q, R, M, K, λ_indx)
 """
 function symmetricPrior_mmtd(size_Λ::Float64, size_λ::Float64, size_Q::Float64,
   R::Int, M::Int, K::Int, λ_indx::Tuple)
@@ -65,8 +90,6 @@ end
 
 """
     rpost_lΛ_mmtd(α0_Λ, Z, M)
-
-Currently counts up whatever Z's it gets, rather than excluding the first R of them.
 """
 function rpost_lΛ_mmtd(α0_Λ::Vector{Float64}, Z::Vector{Int}, M::Int)
   Nz = StatsBase.counts(Z, 1:M)
@@ -165,7 +188,7 @@ end
 """
     rpost_ζ_mmtd(S, TT, lλ, Z, lQ, λ_indx, R, M, K)
 """
-function rpost_Z_mmtd(S::Vector{Int}, TT::Int,
+function rpost_ζ_mmtd(S::Vector{Int}, TT::Int,
   lλ::Vector{Vector{Float64}}, Z::Vector{Int}, lQ::Vector{Array{Float64}},
   λ_indx::Tuple, R::Int, M::Int, K::Int)
 

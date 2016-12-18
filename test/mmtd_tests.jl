@@ -19,4 +19,10 @@ using StatsBase
 println(StatsBase.counts(z))
 println(StatsBase.counts(z, 1:5))
 
-### another test for Bitbucket
+### simulate a data set
+Λ = [0.8, 0.2]
+λ = [[0.2, 0.6, 0.2], [0.5, 0.3, 0.2]]
+Q = [ reshape([0.75, 0.25, 0.5, 0.5], (K,K)),
+      reshape([0.1, 0.9,  0.3, 0.7,  0.4, 0.6, 0.8, 0.2], (K,K,K)) ] # organized with first index as current state
+
+S, Z, ζ = sim_mmtd(500, 100, R, M, K, λ_indx, Λ, λ, Q)
