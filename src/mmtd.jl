@@ -3,7 +3,7 @@
 export ParamsMMTD, PriorMMTD, ModMMTD,
   build_λ_indx, sim_mmtd, symmetricPrior_mmtd,
   rpost_lΛ_mmtd, rpost_lλ_mmtd, counttrans_mmtd, rpost_lQ_mmtd,
-  rpost_Z_mmtd, rpost_ζ_mmtd;
+  rpost_Z_mmtd, rpost_ζ_mmtd; # remove the inner functions after testing
 
 type ParamsMMTD
   lΛ::Vector{Float64}
@@ -128,9 +128,10 @@ function counttrans_mmtd(S::Vector{Int}, TT::Int, Z::Vector{Int}, ζ::Matrix{Int
   N_out = [ zeros(Int, (fill(K, m+1)...)) for m in 1:M ]
 
   ## pass through data and add counts
-  for tt in (R+1):TT
+  for tt in (R+1):(TT)
     Z_now = Z[tt-R]
-    N_out[Z_now][append!(copy(S[tt]), copy(λ_indx[1][ Z_now ][ ζ[tt-R,Z_now] ]))...] += 1
+    Slagrev_now = S[range(tt-1, -1, R)]
+    N_out[Z_now][append!( copy(S[tt]), copy(Slagrev_now[ λ_indx[1][Z_now][ζ[tt-R,Z_now]] ]) )...] += 1
   end
 
   N_out
