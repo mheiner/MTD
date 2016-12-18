@@ -11,6 +11,14 @@ function create_froms(K::UInt16, R::UInt16)
   xx = collect(product(repeated(x,Int(R))...))
   (xx, length(xx))
 end
+
+function create_froms(K::Int, R::Int)
+  x = 1:K
+  xx = collect(product(repeated(x,R)...))
+  (xx, length(xx))
+end
+
+
 # similarly,
 # x = collect(CartesianRange((2,2)))
 # x[2]
