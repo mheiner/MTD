@@ -1,6 +1,6 @@
 # general.jl
 
-export create_froms;
+export create_froms, count_trans_R;
 
 ## expand.grid() from R
 # using Iterators
@@ -45,3 +45,29 @@ end
 # end
 #
 # A = collect(Combinatorics.combinations(1:5, 3))
+
+
+"""
+    count_trans_R(S, K, R)
+
+Returns a tensor with counts of observed `R`th order transitions in `S`
+  for a chain with `K` states. The first dimension is time now, the next
+  dimension is lag 1, then lag 2, and so on.
+
+### Example
+```julia
+  S = [1,2,1,1,1,2,4,1,3,1,1,3,1,2,1,1,2]
+  count_trans_R(S, 4, 2)
+```
+"""
+function count_trans_R(S::Vector{Int}, K::Int, R::Int)
+    assert(minimum(S) >= K && maximum(S) <= K)
+    N = zeros(Int, (collect(repeated(K,R+1))...))
+
+    for tt in (R+1):length(S)
+      Srev_now = S[range(tt,-1,(R+1))]
+      N[(Srev_now)...] += 1
+    end
+
+    N
+end
