@@ -1,7 +1,7 @@
 # mmtd.jl
 
 export ParamsMMTD, PriorMMTD, ModMMTD,
-  build_λ_indx, sim_mmtd, symmetricPrior_mmtd,
+  build_λ_indx, sim_mmtd, symmetricPrior_mmtd, transTensor_mmtd,
   rpost_lΛ_mmtd, rpost_lλ_mmtd, counttrans_mmtd, rpost_lQ_mmtd,
   rpost_Z_mmtd, rpost_ζ_mmtd; # remove the inner functions after testing
 
@@ -87,6 +87,27 @@ function symmetricPrior_mmtd(size_Λ::Float64, size_λ::Float64, size_Q::Float64
   α0_Q = [ fill( a0_Q, (K, K^(m)) ) for m in 1:M ]
 
   (α0_Λ, α0_λ, α0_Q)
+end
+
+
+"""
+
+"""
+function transTensor_mmtd(R::Int, M::Int, K::Int, λ_indx::Tuple,
+  Λ::Vector{Float64}, λ::Vector{Vector{Float64}}, Q::Vector{Array{Float64}})
+
+  froms, nfroms = create_froms(K, R) # in this case, ordered by now, lag1, lag2, etc.
+  Ωmat = zeros(Float64, (K, nfroms))
+  for i in 1:nfroms
+    for k in 1:K
+      for m in 1:M
+        for ℓ in 1:λ_indx[2][m]
+            Ωmat[k,i] += Λ[m] .* λ[m][ℓ] .* Q[m][k,froms[i][[λ_indx[1][m][ℓ]]...]...]
+        end
+      end
+    end
+  end
+  reshape(Ωmat, (fill(K,R+1)...))
 end
 
 
