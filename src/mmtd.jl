@@ -3,7 +3,7 @@
 export ParamsMMTD, PriorMMTD, ModMMTD,
   build_λ_indx, sim_mmtd, symmetricPrior_mmtd, transTensor_mmtd,
   rpost_lΛ_mmtd, rpost_lλ_mmtd, counttrans_mmtd, rpost_lQ_mmtd,
-  rpost_Z_mmtd, rpost_ζ_mmtd; # remove the inner functions after testing
+  rpost_Z_mmtd, rpost_ζ_mmtd, mcmc_mmtd!; # remove the inner functions after testing
 
 type ParamsMMTD
   lΛ::Vector{Float64}
@@ -28,9 +28,17 @@ type ModMMTD
   prior::PriorMMTD
   state::ParamsMMTD
   iter::UInt64
+  λ_indx::Tuple
 
   ModMMTD(R, M, K, TT, S, prior, state) = new(R, M, K, TT, S, prior, state, UInt64(0))
 end
+
+type PostSimsMMTD
+  Λ::Matrix{Float64}
+  λ::Array{Matrix{Float64}}
+  Q::Array{Matrix{Float64}}
+end
+
 
 
 """
@@ -91,7 +99,9 @@ end
 
 
 """
+    transTensor_mmtd(R, M, K, λ_indx, Λ, λ, Q)
 
+Calculate full transition tensor from Λ, λ, and Q.
 """
 function transTensor_mmtd(R::Int, M::Int, K::Int, λ_indx::Tuple,
   Λ::Vector{Float64}, λ::Vector{Vector{Float64}}, Q::Vector{Array{Float64}})
@@ -236,4 +246,68 @@ function rpost_ζ_mmtd(S::Vector{Int}, TT::Int,
   end
 
   ζ_out
+end
+
+
+"""
+    mcmc_mmtd!(model, n_keep[, thin=1, report_filename="out_progress.txt",
+    report_freq=500, save=true])
+"""
+function mcmc_mmtd!(model::ModMMTD, n_keep::Int, thin::Int=1,
+  report_filename::String="out_progress.txt", report_freq::Int=500,
+  save::Bool=true)
+
+  ## output files
+  report_file = open(report_filename, "a+")
+  write(report_file, "Commencing MCMC at $(now())
+    for $(n_keep * thin) iterations.\n")
+
+  if save
+    sims = PostSimsMMTD( Matrix{Float64}(n_keep, model.M),
+      [ Matrix{Float64}(n_keep, model.λ_indx[2][m]) for m in 1:model.M ],
+      [ Matrix{Float64}(n_keep, K^(m+1)) for m in 1:model.M ] )
+  end
+
+  for i in 1:n_keep
+    for j in 1:thin
+
+      model.state.lΛ = rpost_lΛ_mmtd(model.prior.α0_Λ, model.state.Z, model.M)
+
+      model.state.lλ = rpost_lλ_mmtd(model.prior.α0_λ, model.state.ζ,
+        model.λ_indx[2], model.M)
+
+      model.state.lQ = rpost_lQ_mmtd(model.S, model.TT, model.prior.α0_Q,
+        model.state.Z, model.state.ζ, model.λ_indx, model.R, model.M, model.K)
+
+      model.state.Z = rpost_Z_mmtd(model.S, model.TT,
+        model.state.lΛ, model.state.ζ, model.state.lQ, model.λ_indx,
+        model.R, model.M)
+
+      model.state.ζ = rpost_ζ_mmtd(model.S, model.TT,
+        model.state.lλ, model.state.Z, model.state.lQ,
+        model.λ_indx, model.R, model.M, model.K)
+
+      model.iter += 1
+      if model.iter % report_freq == 0
+        write(report_file, "Iter $(model.iter) at $(now())\n")
+      end
+    end
+
+    if save
+      @inbounds sims.Λ[i,:] = exp( model.state.lΛ )
+      for m in 1:M
+        @inbounds sims.λ[m][i,:] = exp( model.state.lλ[m] )
+        @inbounds sims.Q[m][i,:] = exp( vec( model.state.lQ[m] ) )
+      end
+    end
+  end
+
+  close(report_file)
+
+  if save
+    return sims
+  else
+    return model.iter
+  end
+
 end
