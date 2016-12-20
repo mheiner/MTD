@@ -23,14 +23,14 @@ type ModMMTD
   R::Int # maximal order
   M::Int # largest order considered
   K::Int # number of states
-  TT::UInt64
+  TT::Int
   S::Vector{Int}
   prior::PriorMMTD
   state::ParamsMMTD
-  iter::UInt64
   λ_indx::Tuple
+  iter::UInt64
 
-  ModMMTD(R, M, K, TT, S, prior, state) = new(R, M, K, TT, S, prior, state, UInt64(0))
+  ModMMTD(R, M, K, TT, S, prior, state, λ_indx) = new(R, M, K, TT, S, prior, state, λ_indx, UInt64(0))
 end
 
 type PostSimsMMTD
@@ -162,7 +162,7 @@ function counttrans_mmtd(S::Vector{Int}, TT::Int, Z::Vector{Int}, ζ::Matrix{Int
   for tt in (R+1):(TT)
     Z_now = Z[tt-R]
     Slagrev_now = S[range(tt-1, -1, R)]
-    N_out[Z_now][append!( copy(S[tt]), copy(Slagrev_now[ λ_indx[1][Z_now][ζ[tt-R,Z_now]] ]) )...] += 1
+    N_out[Z_now][append!( [copy(S[tt])], copy(Slagrev_now[ λ_indx[1][Z_now][ζ[tt-R,Z_now]] ]) )...] += 1
   end
 
   N_out
@@ -210,7 +210,7 @@ function rpost_Z_mmtd(S::Vector{Int}, TT::Int,
     tt = i + R
     Slagrev_now = S[range(tt-1, -1, R)]
     for m in 1:M
-      lp[m] = lΛ[m] + lQ[m][ append!(copy(S[tt]), copy( Slagrev_now[λ_indx[1][m][ ζ[i,m] ]] ))... ]
+      lp[m] = lΛ[m] + lQ[m][ append!([copy(S[tt])], copy( Slagrev_now[λ_indx[1][m][ ζ[i,m] ]] ))... ]
     end
     Z_out[i] = StatsBase.sample(WeightVec(exp(lp)))
   end
@@ -233,10 +233,10 @@ function rpost_ζ_mmtd(S::Vector{Int}, TT::Int,
     tt = i + R
     Slagrev_now = S[range(tt-1, -1, R)]
     for m in 1:M
-      if Z[tt] == m
+      if Z[i] == m
+        lp = Vector{Float64}(λ_lens[m])
         for j in 1:λ_lens[m]
-          lp = Vector{Float64}(λ_lens[m])
-          lp[j] = lλ[m][j] + lQ[m][ append!(copy(S[tt]), copy(Slagrev_now[λ_indx[1][m][j]]))... ]
+          lp[j] = lλ[m][j] + lQ[m][ append!([copy(S[tt])], copy(Slagrev_now[λ_indx[1][m][j]]))... ]
         end
         ζ_out[i,m] = StatsBase.sample(WeightVec( exp(lp) ))
       else
@@ -250,12 +250,11 @@ end
 
 
 """
-    mcmc_mmtd!(model, n_keep[, thin=1, report_filename="out_progress.txt",
-    report_freq=500, save=true])
+    mcmc_mmtd!(model, n_keep[, save=true, thin=1,
+      report_filename="out_progress.txt", report_freq=500])
 """
-function mcmc_mmtd!(model::ModMMTD, n_keep::Int, thin::Int=1,
-  report_filename::String="out_progress.txt", report_freq::Int=500,
-  save::Bool=true)
+function mcmc_mmtd!(model::ModMMTD, n_keep::Int, save::Bool=true,
+  thin::Int=1, report_filename::String="out_progress.txt", report_freq::Int=500)
 
   ## output files
   report_file = open(report_filename, "a+")
@@ -265,7 +264,7 @@ function mcmc_mmtd!(model::ModMMTD, n_keep::Int, thin::Int=1,
   if save
     sims = PostSimsMMTD( Matrix{Float64}(n_keep, model.M),
       [ Matrix{Float64}(n_keep, model.λ_indx[2][m]) for m in 1:model.M ],
-      [ Matrix{Float64}(n_keep, K^(m+1)) for m in 1:model.M ] )
+      [ Matrix{Float64}(n_keep, model.K^(m+1)) for m in 1:model.M ] )
   end
 
   for i in 1:n_keep
@@ -295,7 +294,7 @@ function mcmc_mmtd!(model::ModMMTD, n_keep::Int, thin::Int=1,
 
     if save
       @inbounds sims.Λ[i,:] = exp( model.state.lΛ )
-      for m in 1:M
+      for m in 1:model.M
         @inbounds sims.λ[m][i,:] = exp( model.state.lλ[m] )
         @inbounds sims.Q[m][i,:] = exp( vec( model.state.lQ[m] ) )
       end
