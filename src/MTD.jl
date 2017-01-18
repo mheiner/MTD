@@ -3,7 +3,7 @@ module MTD
 ## distributed packages
 using Distributions
 using Iterators
-import Combinatorics.combinations
+using Combinatorics
 using StatsBase
 
 ## personal packages
