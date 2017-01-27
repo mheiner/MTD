@@ -276,6 +276,14 @@ function mcmc_mmtd!(model::ModMMTD, n_keep::Int, save::Bool=true,
   for i in 1:n_keep
     for j in 1:thin
 
+      model.state.Z = rpost_Z_mmtd(model.S, model.TT,
+        model.state.lΛ, model.state.ζ, model.state.lQ, model.λ_indx,
+        model.R, model.M)
+
+      model.state.ζ = rpost_ζ_mmtd(model.S, model.TT,
+        model.state.lλ, model.state.Z, model.state.lQ,
+        model.λ_indx, model.R, model.M, model.K)
+
       model.state.lΛ = rpost_lΛ_mmtd(model.prior.α0_Λ, model.state.Z, model.M)
 
       model.state.lλ = rpost_lλ_mmtd(model.prior.α0_λ, model.state.ζ,
@@ -283,14 +291,6 @@ function mcmc_mmtd!(model::ModMMTD, n_keep::Int, save::Bool=true,
 
       model.state.lQ = rpost_lQ_mmtd(model.S, model.TT, model.prior.α0_Q,
         model.state.Z, model.state.ζ, model.λ_indx, model.R, model.M, model.K)
-
-      model.state.Z = rpost_Z_mmtd(model.S, model.TT,
-        model.state.lΛ, model.state.ζ, model.state.lQ, model.λ_indx,
-        model.R, model.M)
-
-      # model.state.ζ = rpost_ζ_mmtd(model.S, model.TT,
-      #   model.state.lλ, model.state.Z, model.state.lQ,
-      #   model.λ_indx, model.R, model.M, model.K)
 
       model.iter += 1
       if model.iter % report_freq == 0
