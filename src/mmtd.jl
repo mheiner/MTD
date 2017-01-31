@@ -17,6 +17,8 @@ immutable PriorMMTD
   α0_Λ::Vector{Float64}
   α0_λ::Vector{Vector{Float64}}
   α0_Q::Vector{Matrix{Float64}} # organized in matricized form
+  β_Λ::Float64
+  β_λ::Float64
 end
 
 type ModMMTD
@@ -131,6 +133,11 @@ function rpost_lΛ_mmtd(α0_Λ::Vector{Float64}, Z::Vector{Int}, M::Int)
   α1_Λ = α0_Λ + Nz
   BayesInference.rDirichlet(α1_Λ, true)
 end
+function rpost_lΛ_mmtd(α0_Λ::Vector{Float64}, β_Λ::Float64, Z::Vector{Int}, M::Int)
+  Nz = StatsBase.counts(Z, 1:M)
+  α1_Λ = α0_Λ + Nz
+  BayesInference.rSparseDirMix(α1_Λ, β_Λ, true)
+end
 
 
 """
@@ -145,6 +152,19 @@ function rpost_lλ_mmtd(α0_λ::Vector{Vector{Float64}}, ζ::Matrix{Int},
     Nζ = StatsBase.counts(ζ[:,m], 1:λ_lens[m])
     α1_λ = α0_λ[m] + Nζ
     lλ_out[m] = BayesInference.rDirichlet(α1_λ, true)
+  end
+
+  lλ_out
+end
+function rpost_lλ_mmtd(α0_λ::Vector{Vector{Float64}}, β_λ::Float64, ζ::Matrix{Int},
+  λ_lens::Vector{Int}, M::Int)
+
+  lλ_out = [ Vector{Float64}(λ_lens[m]) for m in 1:M ]
+
+  for m in 1:M
+    Nζ = StatsBase.counts(ζ[:,m], 1:λ_lens[m])
+    α1_λ = α0_λ[m] + Nζ
+    lλ_out[m] = BayesInference.rSparseDirMix(α1_λ, β_λ, true)
   end
 
   lλ_out
@@ -284,9 +304,9 @@ function mcmc_mmtd!(model::ModMMTD, n_keep::Int, save::Bool=true,
         model.state.lλ, model.state.Z, model.state.lQ,
         model.λ_indx, model.R, model.M, model.K)
 
-      model.state.lΛ = rpost_lΛ_mmtd(model.prior.α0_Λ, model.state.Z, model.M)
+      model.state.lΛ = rpost_lΛ_mmtd(model.prior.α0_Λ, model.prior.β_Λ, model.state.Z, model.M)
 
-      model.state.lλ = rpost_lλ_mmtd(model.prior.α0_λ, model.state.ζ,
+      model.state.lλ = rpost_lλ_mmtd(model.prior.α0_λ, model.prior.β_λ, model.state.ζ,
         model.λ_indx[2], model.M)
 
       model.state.lQ = rpost_lQ_mmtd(model.S, model.TT, model.prior.α0_Q,
