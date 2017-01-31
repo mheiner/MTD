@@ -1,6 +1,6 @@
 # general.jl
 
-export create_froms, count_trans_R;
+export create_froms, count_trans_R, transTens_MLE;
 
 ## expand.grid() from R
 # using Iterators
