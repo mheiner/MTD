@@ -79,3 +79,28 @@ function count_trans_R(S::Vector{Int}, K::Int, R::Int)
 
     N
 end
+
+
+
+"""
+    transTens_MLE(S, K, R)
+
+Returns a tensor with estimated transition probabilities for `R`th order transitions in `S`
+  for a chain with `K` states. The first dimension is time now, the next
+  dimension is lag 1, then lag 2, and so on.
+
+### Example
+```julia
+  S = [1,2,1,1,1,2,4,1,3,1,1,3,1,2,1,1,2]
+  count_trans_R(S, 4, 2)
+  transTens_MLE(S, 4, 2)
+```
+"""
+function transTens_MLE(S::Vector{Int}, K::Int, R::Int)
+    assert(minimum(S) >= 1 && maximum(S) <= K)
+    N = count_trans_R(S, K, R)
+    N ./ sum(N, 1)
+end
+function transTens_MLE(N::Union{Array{Float64}, Array{Int64}})
+    N ./ sum(N, 1)
+end
