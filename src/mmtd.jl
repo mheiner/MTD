@@ -64,7 +64,7 @@ end
     sim_mmtd(TT, nburn, R, M, K, λ_indx, Λ, λ, Q)
 """
 function sim_mmtd(TT::Int, nburn::Int, R::Int, M::Int, K::Int, λ_indx::Tuple,
-  Λ::Vector{Float64}, λ::Vector{Vector{Float64}}, Q::Vector{Array{Float64}})
+  Λ::Array{Float64}, λ::Array{Vector{Float64}}, Q#=::Array{Array{Float64}}=#)
 
   Nsim = nburn + TT
 
@@ -108,7 +108,7 @@ end
 Calculate full transition tensor from Λ, λ, and Q.
 """
 function transTensor_mmtd(R::Int, M::Int, K::Int, λ_indx::Tuple,
-  Λ::Vector{Float64}, λ::Vector{Vector{Float64}}, Q::Vector{Array{Float64}})
+  Λ::Vector{Float64}, λ::Vector{Vector{Float64}}, Q#=::Vector{Array{Float64}}=#)
 
   froms, nfroms = create_froms(K, R) # in this case, ordered by now, lag1, lag2, etc.
   Ωmat = zeros(Float64, (K, nfroms))
@@ -296,15 +296,19 @@ function mcmc_mmtd!(model::ModMMTD, n_keep::Int, save::Bool=true,
   for i in 1:n_keep
     for j in 1:thin
 
-      model.state.Z = rpost_Z_mmtd(model.S, model.TT,
-        model.state.lΛ, model.state.ζ, model.state.lQ, model.λ_indx,
-        model.R, model.M)
+      if model.M > 1
+        model.state.Z = rpost_Z_mmtd(model.S, model.TT,
+          model.state.lΛ, model.state.ζ, model.state.lQ, model.λ_indx,
+          model.R, model.M)
+      end
 
       model.state.ζ = rpost_ζ_mmtd(model.S, model.TT,
         model.state.lλ, model.state.Z, model.state.lQ,
         model.λ_indx, model.R, model.M, model.K)
 
-      model.state.lΛ = rpost_lΛ_mmtd(model.prior.α0_Λ, model.prior.β_Λ, model.state.Z, model.M)
+      if model.M > 1
+        model.state.lΛ = rpost_lΛ_mmtd(model.prior.α0_Λ, model.prior.β_Λ, model.state.Z, model.M)
+      end
 
       model.state.lλ = rpost_lλ_mmtd(model.prior.α0_λ, model.prior.β_λ, model.state.ζ,
         model.λ_indx[2], model.M)
