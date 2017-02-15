@@ -13,12 +13,10 @@ type ParamsMMTD
   lQ::Vector{Array{Float64}} # organized so first index is now and lag 1 is the next index
 end
 
-immutable PriorMMTD
-  α0_Λ::Vector{Float64}
-  α0_λ::Vector{Vector{Float64}}
+type PriorMMTD
+  Λ::Union{Vector{Float64}, SparseDirMixPrior, SparseSBPrior, SparseSBPriorFull}
+  λ::Union{Vector{Float64}, Vector{SparseDirMixPrior}, Vector{SparseSBPrior}, Vector{SparseSBPriorFull}}
   α0_Q::Vector{Matrix{Float64}} # organized in matricized form
-  β_Λ::Float64
-  β_λ::Float64
 end
 
 type ModMMTD
@@ -133,12 +131,21 @@ function rpost_lΛ_mmtd(α0_Λ::Vector{Float64}, Z::Vector{Int}, M::Int)
   α1_Λ = α0_Λ + Nz
   BayesInference.rDirichlet(α1_Λ, true)
 end
-function rpost_lΛ_mmtd(α0_Λ::Vector{Float64}, β_Λ::Float64, Z::Vector{Int}, M::Int)
+function rpost_lΛ_mmtd(prior::SparseDirMixPrior,
+    Z::Vector{Int}, M::Int)
   Nz = StatsBase.counts(Z, 1:M)
-  α1_Λ = α0_Λ + Nz
-  BayesInference.rSparseDirMix(α1_Λ, β_Λ, true)
+  α1_Λ = prior.α + Nz
+  BayesInference.rSparseDirMix(α1_Λ, prior.β, true)
 end
+function rpost_lΛ_mmtd!(prior::SparseSBPriorFull,
+    Z::Vector{Int}, M::Int)
 
+  w_now, z_now, ξ_now, prior.μ_now, prior.p1_now = BayesInference.rpost_sparseStickBreak(Z,
+    prior.p1_now, prior.α, prior.μ_now, prior.M, prior.a_p1,
+    prior.b_p1, prior.a_μ, prior.b_μ)
+
+  log(w_now)
+end
 
 """
     rpost_lλ_mmtd(α0_λ, ζ, λ_lens, M)
@@ -156,20 +163,35 @@ function rpost_lλ_mmtd(α0_λ::Vector{Vector{Float64}}, ζ::Matrix{Int},
 
   lλ_out
 end
-function rpost_lλ_mmtd(α0_λ::Vector{Vector{Float64}}, β_λ::Float64, ζ::Matrix{Int},
+function rpost_lλ_mmtd(prior::Vector{SparseDirMixPrior}, ζ::Matrix{Int},
   λ_lens::Vector{Int}, M::Int)
 
   lλ_out = [ Vector{Float64}(λ_lens[m]) for m in 1:M ]
 
   for m in 1:M
     Nζ = StatsBase.counts(ζ[:,m], 1:λ_lens[m])
-    α1_λ = α0_λ[m] + Nζ
-    lλ_out[m] = BayesInference.rSparseDirMix(α1_λ, β_λ, true)
+    α1_λ = prior[m].α + Nζ
+    lλ_out[m] = BayesInference.rSparseDirMix(α1_λ, prior[m].β, true)
   end
 
   lλ_out
 end
+function rpost_lλ_mmtd!(prior::Array{SparseSBPriorFull}, ζ::Matrix{Int},
+  λ_lens::Vector{Int}, M::Int)
 
+  lλ_out = [ Vector{Float64}(λ_lens[m]) for m in 1:M ]
+
+  for m in 1:M
+    Nζ = StatsBase.counts(ζ[:,m], 1:λ_lens[m])
+    w_now, z_now, ξ_now, prior[m].μ_now, prior[m].p1_now = BayesInference.rpost_sparseStickBreak(Nζ,
+        prior[m].p1_now, prior[m].α, prior[m].μ_now, prior[m].M,
+        prior[m].a_p1, prior[m].b_p1, prior[m].a_μ, prior[m].b_μ)
+
+    lλ_out[m] = log( copy(w_now) )
+  end
+
+  lλ_out
+end
 
 """
     counttrans_mmtd(S, TT, Z, ζ, λ_indx, R, M, K)
@@ -307,11 +329,16 @@ function mcmc_mmtd!(model::ModMMTD, n_keep::Int, save::Bool=true,
         model.λ_indx, model.R, model.M, model.K)
 
       if model.M > 1
-        model.state.lΛ = rpost_lΛ_mmtd(model.prior.α0_Λ, model.prior.β_Λ, model.state.Z, model.M)
+        model.state.lΛ = rpost_lΛ_mmtd(model.prior.Λ, model.state.Z, model.M)
       end
 
-      model.state.lλ = rpost_lλ_mmtd(model.prior.α0_λ, model.prior.β_λ, model.state.ζ,
+      if typeof(model.prior.λ) == Vector{BayesInference.SparseSBPriorFull}
+      model.state.lλ = rpost_lλ_mmtd!(model.prior.λ, model.state.ζ,
         model.λ_indx[2], model.M)
+      else
+        model.state.lλ = rpost_lλ_mmtd(model.prior.λ, model.state.ζ,
+          model.λ_indx[2], model.M)
+      end
 
       model.state.lQ = rpost_lQ_mmtd(model.S, model.TT, model.prior.α0_Q,
         model.state.Z, model.state.ζ, model.λ_indx, model.R, model.M, model.K)
