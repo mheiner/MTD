@@ -15,7 +15,7 @@ end
 
 type PriorMMTD
   Λ::Union{Vector{Float64}, SparseDirMixPrior, SparseSBPrior, SparseSBPriorFull}
-  λ::Union{Vector{Float64}, Vector{SparseDirMixPrior}, Vector{SparseSBPrior}, Vector{SparseSBPriorFull}}
+  λ::Union{Vector{Vector{Float64}}, Vector{SparseDirMixPrior}, Vector{SparseSBPrior}, Vector{SparseSBPriorFull}}
   α0_Q::Vector{Matrix{Float64}} # organized in matricized form
 end
 
