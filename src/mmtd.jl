@@ -176,6 +176,22 @@ function rpost_lλ_mmtd(prior::Vector{SparseDirMixPrior}, ζ::Matrix{Int},
 
   lλ_out
 end
+function rpost_lλ_mmtd(prior::Array{SparseSBPrior}, ζ::Matrix{Int},
+  λ_lens::Vector{Int}, M::Int)
+
+  lλ_out = [ Vector{Float64}(λ_lens[m]) for m in 1:M ]
+
+  for m in 1:M
+    Nζ = StatsBase.counts(ζ[:,m], 1:λ_lens[m])
+    w_now, z_now, ξ_now = BayesInference.rpost_sparseStickBreak(Nζ,
+        prior[m].p1, prior[m].α,
+        prior[m].μ, prior[m].M )
+
+    lλ_out[m] = log( copy(w_now) )
+  end
+
+  lλ_out
+end
 function rpost_lλ_mmtd!(prior::Array{SparseSBPriorFull}, ζ::Matrix{Int},
   λ_lens::Vector{Int}, M::Int)
 
