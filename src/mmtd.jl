@@ -294,8 +294,8 @@ end
 
 
 """
-    mcmc_mmtd!(model, n_keep[, save=true, thin=1,
-      report_filename="out_progress.txt", report_freq=500])
+    mcmc_mmtd!(model, n_keep[, save=true, report_filename="out_progress.txt",
+       thin=1, report_freq=500, monitor_indx=[1]])
 """
 function mcmc_mmtd!(model::ModMMTD, n_keep::Int, save::Bool=true,
   report_filename::String="out_progress.txt", thin::Int=1, report_freq::Int=1000;
