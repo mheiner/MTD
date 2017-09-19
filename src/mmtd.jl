@@ -15,7 +15,7 @@ end
 
 type PriorMMTD
   Λ::Union{Vector{Float64}, SparseDirMixPrior, SparseSBPrior, SparseSBPriorFull}
-  λ::Union{Vector{Vector{Float64}}, Vector{SparseDirMixPrior}, Vector{SparseSBPrior}, Vector{SparseSBPriorFull}}
+  λ::Union{Vector{Vector{Float64}}, Vector{SparseDirMixPrior}, Vector{SparseSBPrior}, Vector{SparseSBPriorP}, Vector{SparseSBPriorFull}}
   α0_Q::Vector{Matrix{Float64}} # organized in matricized form
 end
 
@@ -39,6 +39,7 @@ type PostSimsMMTD
   Q::Array{Matrix{Float64}}
   Z::Matrix{Int}
   ζ::Array{Matrix{Int}}
+  p1::Matrix{Float64}
 end
 
 
@@ -192,6 +193,22 @@ function rpost_lλ_mmtd(prior::Array{SparseSBPrior}, ζ::Matrix{Int},
 
   lλ_out
 end
+function rpost_lλ_mmtd!(prior::Array{SparseSBPriorP}, ζ::Matrix{Int},
+  λ_lens::Vector{Int}, M::Int)
+
+  lλ_out = [ Vector{Float64}(λ_lens[m]) for m in 1:M ]
+
+  for m in 1:M
+    Nζ = StatsBase.counts(ζ[:,m], 1:λ_lens[m])
+    w_now, z_now, ξ_now, prior[m].p1_now = BayesInference.rpost_sparseStickBreak(Nζ,
+        prior[m].p1_now, prior[m].α, prior[m].μ, prior[m].M,
+        prior[m].a_p1, prior[m].b_p1)
+
+    lλ_out[m] = log( copy(w_now) )
+  end
+
+  lλ_out
+end
 function rpost_lλ_mmtd!(prior::Array{SparseSBPriorFull}, ζ::Matrix{Int},
   λ_lens::Vector{Int}, M::Int)
 
@@ -328,13 +345,20 @@ function mcmc_mmtd!(model::ModMMTD, n_keep::Int, save::Bool=true,
       [ Matrix{Float64}(n_keep, model.λ_indx[2][m]) for m in 1:model.M ],
       [ Matrix{Float64}(n_keep, model.K^(m+1)) for m in 1:model.M ],
       Matrix{Int}(n_keep, monitor_len),
-      [ Matrix{Int}(n_keep, monitor_len) for m in 1:model.M ] )
+      [ Matrix{Int}(n_keep, monitor_len) for m in 1:model.M ],
+      Matrix{Float64}(n_keep, model.M) )
   end
 
+  ## flags
+  SBMp_flag = typeof(model.prior.λ) == Vector{BayesInference.SparseSBPriorP}
+  SBMfull_flag = typeof(model.prior.λ) == Vector{BayesInference.SparseSBPriorFull}
+  Mbig_flag = model.M > 1
+
+  ## sampling
   for i in 1:n_keep
     for j in 1:thin
 
-      if model.M > 1
+      if Mbig_flag
         model.state.Z = rpost_Z_mmtd(model.S, model.TT,
           model.state.lΛ, model.state.ζ, model.state.lQ, model.λ_indx,
           model.R, model.M)
@@ -348,9 +372,9 @@ function mcmc_mmtd!(model::ModMMTD, n_keep::Int, save::Bool=true,
         model.state.lΛ = rpost_lΛ_mmtd(model.prior.Λ, model.state.Z, model.M)
       end
 
-      if typeof(model.prior.λ) == Vector{BayesInference.SparseSBPriorFull}
-      model.state.lλ = rpost_lλ_mmtd!(model.prior.λ, model.state.ζ,
-        model.λ_indx[2], model.M)
+      if SBMp_flag || SBMfull_flag
+        model.state.lλ = rpost_lλ_mmtd!(model.prior.λ, model.state.ζ,
+          model.λ_indx[2], model.M)
       else
         model.state.lλ = rpost_lλ_mmtd(model.prior.λ, model.state.ζ,
           model.λ_indx[2], model.M)
@@ -367,11 +391,14 @@ function mcmc_mmtd!(model::ModMMTD, n_keep::Int, save::Bool=true,
 
     if save
       @inbounds sims.Λ[i,:] = exp( model.state.lΛ )
-      @inbounds sims.Z[i,:] = model.state.Z[monitor_indx]
+      @inbounds sims.Z[i,:] = copy(model.state.Z[monitor_indx])
       for m in 1:model.M
         @inbounds sims.λ[m][i,:] = exp( model.state.lλ[m] )
         @inbounds sims.Q[m][i,:] = exp( vec( model.state.lQ[m] ) )
-        @inbounds sims.ζ[m][i,:] = model.state.ζ[monitor_indx,m]
+        @inbounds sims.ζ[m][i,:] = copy(model.state.ζ[monitor_indx,m])
+        if SBMp_flag || SBMfull_flag
+            sims.p1[i,m] = copy(model.prior.λ[m].p1_now)
+        end
       end
     end
   end
