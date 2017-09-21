@@ -3,7 +3,7 @@
 export ParamsMMTD, PriorMMTD, ModMMTD,
   build_λ_indx, sim_mmtd, symmetricPrior_mmtd, transTensor_mmtd,
   rpost_lΛ_mmtd, rpost_lλ_mmtd, counttrans_mmtd, rpost_lQ_mmtd,
-  rpost_Z_mmtd, rpost_ζ_mmtd, mcmc_mmtd!; # remove the inner functions after testing
+  rpost_Z_mmtd, rpost_ζ_mmtd, rpost_ζ_mtd_marg, mcmc_mmtd!; # remove the inner functions after testing
 
 type ParamsMMTD
   lΛ::Vector{Float64}
@@ -247,6 +247,35 @@ end
 
 
 """
+    counttrans_mtd(S, TT, ζ, R, K)
+
+    ### Example
+    ```julia
+    R = 2
+    K = 3
+    TT = 12
+    S = [1,2,1,3,3,1,2,1,3,2,1,1]
+    ζ = [1,2,1,2,1,2,1,2,1,2]
+      counttrans_mtd(S, TT, ζ, R, K)
+    ```
+"""
+function counttrans_mtd(S::Vector{Int}, TT::Int, ζ::Vector{Int},
+  R::Int, K::Int)
+
+  ## initialize
+  N_out = zeros(Int, (K,K))
+
+  ## pass through data and add counts
+  for tt in (R+1):(TT)
+    Slagrev_now = copy( S[range(tt-1, -1, R)] )
+    from = copy( Slagrev_now[ ζ[tt-R] ] )
+    N_out[ S[tt], from ] += 1
+  end
+
+  N_out
+end
+
+"""
     rpost_lQ_mmtd(S, TT, α0_Q, Z, ζ, λ_indx, R, M, K)
 """
 function rpost_lQ_mmtd(S::Vector{Int}, TT::Int, α0_Q::Vector{Matrix{Float64}},
@@ -327,6 +356,57 @@ end
 
 
 """
+    rpost_ζ_mtd_marg(S, ζ_old, lλ, α0_Q, TT, R, K)
+
+    Full conditinal updates for ζ marginalizing over Q
+"""
+function rpost_ζ_mtd_marg(S::Vector{Int}, ζ_old::Vector{Int},
+    α0_Q::Matrix{Float64}, lλ::Vector{Float64},
+    TT::Int, R::Int, K::Int)
+
+  ζ_out = copy(ζ_old)
+  N_now = counttrans_mtd(S, TT, ζ, R, K) # rows are tos, cols are froms
+
+  for i in 1:(TT-R)  # i indexes ζ, tt indexes S
+    tt = i + R
+    Slagrev_now = S[range(tt-1, -1, R)]
+    N0 = copy(N_now)
+    N0[ S[tt], Slagrev_now[ ζ_out[i] ] ] -= 1
+    α1_Q = α0_Q + N0
+    eSt = [1.0*(ii==S[tt]) for ii in 1:K]
+
+    kuse = unique(Slagrev_now)
+    nkuse = length(kuse)
+
+    lmvbn0 = [ lmvbeta( α1_Q[:,kk] ) for kk in kuse ]
+    lmvbn1 = [ lmvbeta( α1_Q[:,kk] + eSt ) for kk in kuse ]
+
+    lw = zeros(Float64, R)
+
+    for ℓ in 1:R
+        lw[ℓ] = copy(lλ[ℓ])
+        for kk in 1:nkuse
+            if Slagrev_now[ℓ] == kuse[kk]
+                lw[ℓ] += lmvbn1[kk]
+            else
+                lw[ℓ] += lmvbn0[kk]
+            end
+        end
+    end
+
+    w = exp( lw - maximum(lw) )
+    ζ_out[i] = StatsBase.sample(WeightVec( w ))
+    N_now = copy(N0)
+    N_now[ S[tt], Slagrev_now[ ζ_out[i] ] ] += 1
+
+  end
+
+  ζ_out
+end
+
+
+
+"""
     mcmc_mmtd!(model, n_keep[, save=true, report_filename="out_progress.txt",
        thin=1, report_freq=500, monitor_indx=[1]])
 """
@@ -364,9 +444,15 @@ function mcmc_mmtd!(model::ModMMTD, n_keep::Int, save::Bool=true,
           model.R, model.M)
       end
 
-      model.state.ζ = rpost_ζ_mmtd(model.S, model.TT,
-        model.state.lλ, model.state.Z, model.state.lQ,
-        model.λ_indx, model.R, model.M, model.K)
+      if model.M == 1
+          model.state.ζ = rpost_ζ_mtd_marg(model.S, model.state.ζ[:,1],
+            model.prior.α0_Q[1], model.state.lλ[1],
+            model.TT, model.R, model.K)
+        else
+          model.state.ζ = rpost_ζ_mmtd(model.S, model.TT,
+            model.state.lλ, model.state.Z, model.state.lQ,
+            model.λ_indx, model.R, model.M, model.K)
+      end
 
       if model.M > 1
         model.state.lΛ = rpost_lΛ_mmtd(model.prior.Λ, model.state.Z, model.M)
