@@ -365,7 +365,7 @@ function rpost_ζ_mtd_marg(S::Vector{Int}, ζ_old::Vector{Int},
     TT::Int, R::Int, K::Int)
 
   ζ_out = copy(ζ_old)
-  N_now = counttrans_mtd(S, TT, ζ, R, K) # rows are tos, cols are froms
+  N_now = counttrans_mtd(S, TT, ζ_old, R, K) # rows are tos, cols are froms
 
   for i in 1:(TT-R)  # i indexes ζ, tt indexes S
     tt = i + R
@@ -445,7 +445,7 @@ function mcmc_mmtd!(model::ModMMTD, n_keep::Int, save::Bool=true,
       end
 
       if model.M == 1
-          model.state.ζ = rpost_ζ_mtd_marg(model.S, model.state.ζ[:,1],
+          model.state.ζ[:,1] = rpost_ζ_mtd_marg(model.S, model.state.ζ[:,1],
             model.prior.α0_Q[1], model.state.lλ[1],
             model.TT, model.R, model.K)
         else
