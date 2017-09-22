@@ -17,6 +17,10 @@ type PriorMMTD
   Λ::Union{Vector{Float64}, SparseDirMixPrior, SparseSBPrior, SparseSBPriorFull}
   λ::Union{Vector{Vector{Float64}}, Vector{SparseDirMixPrior}, Vector{SparseSBPrior}, Vector{SparseSBPriorP}, Vector{SparseSBPriorFull}}
   α0_Q::Vector{Matrix{Float64}} # organized in matricized form
+  β_Q::Vector{Float64}
+
+  PriorMMTD(Λ, λ, α0_Q) = new(Λ, λ, α0_Q, ones(Float64, length(Λ))) # default to Dirichlet priors on Q
+  PriorMMTD(Λ, λ, α0_Q, β_Q) = new(Λ, λ, α0_Q, β_Q)
 end
 
 type ModMMTD
@@ -276,7 +280,7 @@ function counttrans_mtd(S::Vector{Int}, TT::Int, ζ::Vector{Int},
 end
 
 """
-    rpost_lQ_mmtd(S, TT, α0_Q, Z, ζ, λ_indx, R, M, K)
+    rpost_lQ_mmtd(S, TT, α0_Q, [β_Q,] Z, ζ, λ_indx, R, M, K)
 """
 function rpost_lQ_mmtd(S::Vector{Int}, TT::Int, α0_Q::Vector{Matrix{Float64}},
   Z::Vector{Int}, ζ::Matrix{Int},
@@ -294,6 +298,28 @@ function rpost_lQ_mmtd(S::Vector{Int}, TT::Int, α0_Q::Vector{Matrix{Float64}},
     α1_Q = α0_Q[m] + Nmat
     for j in 1:ncol
       lQ_mats[m][:,j] = BayesInference.rDirichlet(α1_Q[:,j], true)
+    end
+    lQ_out[m] = reshape(lQ_mats[m], (fill(K, m+1)...))
+  end
+
+  lQ_out
+end
+function rpost_lQ_mmtd(S::Vector{Int}, TT::Int, α0_Q::Vector{Matrix{Float64}},
+  β_Q::Vector{Float64}, Z::Vector{Int}, ζ::Matrix{Int},
+  λ_indx::Tuple, R::Int, M::Int, K::Int)
+
+  ## initialize
+  lQ_mats = [ Matrix{Float64}(K, K^m) for m in 1:M ]
+  lQ_out = [ reshape(lQ_mats[m], (fill(K, m+1)...)) for m in 1:M ]
+
+  N = counttrans_mmtd(S, TT, Z, ζ, λ_indx, R, M, K)
+
+  for m in 1:M
+    ncol = K^m
+    Nmat = reshape(N[m], (K, ncol))
+    α1_Q = α0_Q[m] + Nmat
+    for j in 1:ncol
+      lQ_mats[m][:,j] = BayesInference.rSparseDirMix(α1_Q[:,j], β_Q[m], true)
     end
     lQ_out[m] = reshape(lQ_mats[m], (fill(K, m+1)...))
   end
@@ -356,7 +382,7 @@ end
 
 
 """
-    rpost_ζ_mtd_marg(S, ζ_old, lλ, α0_Q, TT, R, K)
+    rpost_ζ_mtd_marg(S, ζ_old, lλ, α0_Q, [β_Q,] TT, R, K)
 
     Full conditinal updates for ζ marginalizing over Q
 """
@@ -403,6 +429,49 @@ function rpost_ζ_mtd_marg(S::Vector{Int}, ζ_old::Vector{Int},
 
   ζ_out
 end
+function rpost_ζ_mtd_marg(S::Vector{Int}, ζ_old::Vector{Int},
+    α0_Q::Matrix{Float64}, β_Q::Float64, lλ::Vector{Float64},
+    TT::Int, R::Int, K::Int)
+
+  ζ_out = copy(ζ_old)
+  N_now = counttrans_mtd(S, TT, ζ_old, R, K) # rows are tos, cols are froms
+
+  for i in 1:(TT-R)  # i indexes ζ, tt indexes S
+    tt = i + R
+    Slagrev_now = S[range(tt-1, -1, R)]
+    N0 = copy(N_now)
+    N0[ S[tt], Slagrev_now[ ζ_out[i] ] ] -= 1
+    # α1_Q = α0_Q + N0
+    eSt = [1*(ii==S[tt]) for ii in 1:K]
+
+    kuse = unique(Slagrev_now)
+    nkuse = length(kuse)
+
+    lSDMmarg0 = [ logSDMmarginal(N0[:,kk], α0_Q[:,kk], β_Q) for kk in kuse ]
+    lSDMmarg1 = [ logSDMmarginal(N0[:,kk] + eSt, α0_Q[:,kk], β_Q) for kk in kuse ]
+
+    lw = zeros(Float64, R)
+
+    for ℓ in 1:R
+        lw[ℓ] = copy(lλ[ℓ])
+        for kk in 1:nkuse
+            if Slagrev_now[ℓ] == kuse[kk]
+                lw[ℓ] += lSDMmarg1[kk]
+            else
+                lw[ℓ] += lSDMmarg0[kk]
+            end
+        end
+    end
+
+    w = exp( lw - maximum(lw) )
+    ζ_out[i] = StatsBase.sample(WeightVec( w ))
+    N_now = copy(N0)
+    N_now[ S[tt], Slagrev_now[ ζ_out[i] ] ] += 1
+
+  end
+
+  ζ_out
+end
 
 
 
@@ -432,6 +501,7 @@ function mcmc_mmtd!(model::ModMMTD, n_keep::Int, save::Bool=true,
   ## flags
   SBMp_flag = typeof(model.prior.λ) == Vector{BayesInference.SparseSBPriorP}
   SBMfull_flag = typeof(model.prior.λ) == Vector{BayesInference.SparseSBPriorFull}
+  Q_SDM_flag = any( model.prior.β_Q .> 1.0 )
   Mbig_flag = model.M > 1
 
   ## sampling
@@ -445,9 +515,15 @@ function mcmc_mmtd!(model::ModMMTD, n_keep::Int, save::Bool=true,
       end
 
       if model.M == 1
-          model.state.ζ[:,1] = rpost_ζ_mtd_marg(model.S, model.state.ζ[:,1],
-            model.prior.α0_Q[1], model.state.lλ[1],
-            model.TT, model.R, model.K)
+         if Q_SDM_flag
+            model.state.ζ[:,1] = rpost_ζ_mtd_marg(model.S, model.state.ζ[:,1],
+                model.prior.α0_Q[1], model.prior.β_Q[1], model.state.lλ[1],
+                model.TT, model.R, model.K)
+         else
+             model.state.ζ[:,1] = rpost_ζ_mtd_marg(model.S, model.state.ζ[:,1],
+                model.prior.α0_Q[1], model.state.lλ[1],
+                model.TT, model.R, model.K)
+          end
         else
           model.state.ζ = rpost_ζ_mmtd(model.S, model.TT,
             model.state.lλ, model.state.Z, model.state.lQ,
@@ -466,8 +542,13 @@ function mcmc_mmtd!(model::ModMMTD, n_keep::Int, save::Bool=true,
           model.λ_indx[2], model.M)
       end
 
-      model.state.lQ = rpost_lQ_mmtd(model.S, model.TT, model.prior.α0_Q,
-        model.state.Z, model.state.ζ, model.λ_indx, model.R, model.M, model.K)
+      if Q_SDM_flag
+          model.state.lQ = rpost_lQ_mmtd(model.S, model.TT, model.prior.α0_Q, model.prior.β_Q,
+            model.state.Z, model.state.ζ, model.λ_indx, model.R, model.M, model.K)
+      else
+          model.state.lQ = rpost_lQ_mmtd(model.S, model.TT, model.prior.α0_Q,
+            model.state.Z, model.state.ζ, model.λ_indx, model.R, model.M, model.K)
+      end
 
       model.iter += 1
       if model.iter % report_freq == 0
