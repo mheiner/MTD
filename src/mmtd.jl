@@ -345,8 +345,8 @@ function rpost_lQ_mmtd(S::Vector{Int}, TT::Int, α_Q::Vector{Float64},
     ncol = K^m
     Nmat = reshape(N[m], (K, ncol))
     for j in 1:ncol
-      lQ_mats[m][:,j] = log( BayesInference.rpost_sparseStickBreak(Nmat[:,j], p1_Q,
-      α_Q, μ_Q, M_Q)[1] )
+      lQ_mats[m][:,j] = log( BayesInference.rpost_sparseStickBreak(Nmat[:,j], p1_Q[m],
+      α_Q[m], μ_Q[m], M_Q[m])[1] )
     end
     lQ_out[m] = reshape(lQ_mats[m], (fill(K, m+1)...))
   end
@@ -619,6 +619,10 @@ function mcmc_mmtd!(model::ModMMTD, n_keep::Int, save::Bool=true,
 
       if Q_SDM_flag
           model.state.lQ = rpost_lQ_mmtd(model.S, model.TT, model.prior.α0_Q, model.prior.β_Q,
+            model.state.Z, model.state.ζ, model.λ_indx, model.R, model.M, model.K)
+      elseif Q_SBM_flag
+          model.state.lQ = rpost_lQ_mmtd(model.S, model.TT, model.prior.α_Q, model.prior.p1_Q,
+            model.prior.M_Q, model.prior.μ_Q,
             model.state.Z, model.state.ζ, model.λ_indx, model.R, model.M, model.K)
       else
           model.state.lQ = rpost_lQ_mmtd(model.S, model.TT, model.prior.α0_Q,
