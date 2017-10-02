@@ -18,9 +18,14 @@ type PriorMMTD
   λ::Union{Vector{Vector{Float64}}, Vector{SparseDirMixPrior}, Vector{SparseSBPrior}, Vector{SparseSBPriorP}, Vector{SparseSBPriorFull}}
   α0_Q::Vector{Matrix{Float64}} # organized in matricized form
   β_Q::Vector{Float64}
+  p1_Q::Vector{Float64}
+  α_Q::Vector{Float64}
+  μ_Q::Vector{Float64}
+  M_Q::Vector{Float64}
 
-  PriorMMTD(Λ, λ, α0_Q) = new(Λ, λ, α0_Q, ones(Float64, length(Λ))) # default to Dirichlet priors on Q
-  PriorMMTD(Λ, λ, α0_Q, β_Q) = new(Λ, λ, α0_Q, β_Q)
+  PriorMMTD(Λ, λ, α0_Q) = new(Λ, λ, α0_Q, ones(Float64, length(Λ)), 0.0, 0.0, 0.0, 0.0) # default to Dirichlet priors on Q
+  PriorMMTD(Λ, λ, α0_Q, β_Q) = new(Λ, λ, α0_Q, β_Q, 0.0, 0.0, 0.0, 0.0)
+  PriorMMTD(Λ, λ, α0_Q, β_Q, p1_Q, α_Q, μ_Q, M_Q) = new(Λ, λ, α0_Q, β_Q, p1_Q, α_Q, μ_Q, M_Q)
 end
 
 type ModMMTD
@@ -326,7 +331,28 @@ function rpost_lQ_mmtd(S::Vector{Int}, TT::Int, α0_Q::Vector{Matrix{Float64}},
 
   lQ_out
 end
+function rpost_lQ_mmtd(S::Vector{Int}, TT::Int, α_Q::Vector{Float64},
+    p1_Q::Vector{Float64}, M_Q::Vector{Float64}, μ_Q::Vector{Float64},
+    Z::Vector{Int}, ζ::Matrix{Int}, λ_indx::Tuple, R::Int, M::Int, K::Int)
 
+  ## initialize
+  lQ_mats = [ Matrix{Float64}(K, K^m) for m in 1:M ]
+  lQ_out = [ reshape(lQ_mats[m], (fill(K, m+1)...)) for m in 1:M ]
+
+  N = counttrans_mmtd(S, TT, Z, ζ, λ_indx, R, M, K)
+
+  for m in 1:M
+    ncol = K^m
+    Nmat = reshape(N[m], (K, ncol))
+    for j in 1:ncol
+      lQ_mats[m][:,j] = log( BayesInference.rpost_sparseStickBreak(Nmat[:,j], p1_Q,
+      α_Q, μ_Q, M_Q)[1] )
+    end
+    lQ_out[m] = reshape(lQ_mats[m], (fill(K, m+1)...))
+  end
+
+  lQ_out
+end
 
 """
     rpost_Z_mmtd(S, TT, lΛ, ζ, lQ, λ_indx, R, M)
@@ -472,7 +498,50 @@ function rpost_ζ_mtd_marg(S::Vector{Int}, ζ_old::Vector{Int},
 
   ζ_out
 end
+function rpost_ζ_mtd_marg(S::Vector{Int}, ζ_old::Vector{Int},
+    α_Q::Float64, p1_Q::Float64, M_Q::Float64, μ_Q::Float64,
+    lλ::Vector{Float64},
+    TT::Int, R::Int, K::Int)
 
+  ζ_out = copy(ζ_old)
+  N_now = counttrans_mtd(S, TT, ζ_old, R, K) # rows are tos, cols are froms
+
+  for i in 1:(TT-R)  # i indexes ζ, tt indexes S
+    tt = i + R
+    Slagrev_now = S[range(tt-1, -1, R)]
+    N0 = copy(N_now)
+    N0[ S[tt], Slagrev_now[ ζ_out[i] ] ] -= 1
+    # α1_Q = α0_Q + N0
+    eSt = [1*(ii==S[tt]) for ii in 1:K]
+
+    kuse = unique(Slagrev_now)
+    nkuse = length(kuse)
+
+    lSDMmarg0 = [ logSBMmarginal(N0[:,kk], p1_Q, α_Q, μ_Q, M_Q) for kk in kuse ]
+    lSDMmarg1 = [ logSBMmarginal(N0[:,kk] + eSt, p1_Q, α_Q, μ_Q, M_Q) for kk in kuse ]
+
+    lw = zeros(Float64, R)
+
+    for ℓ in 1:R
+        lw[ℓ] = copy(lλ[ℓ])
+        for kk in 1:nkuse
+            if Slagrev_now[ℓ] == kuse[kk]
+                lw[ℓ] += lSDMmarg1[kk]
+            else
+                lw[ℓ] += lSDMmarg0[kk]
+            end
+        end
+    end
+
+    w = exp( lw - maximum(lw) )
+    ζ_out[i] = StatsBase.sample(WeightVec( w ))
+    N_now = copy(N0)
+    N_now[ S[tt], Slagrev_now[ ζ_out[i] ] ] += 1
+
+  end
+
+  ζ_out
+end
 
 
 """
@@ -502,6 +571,7 @@ function mcmc_mmtd!(model::ModMMTD, n_keep::Int, save::Bool=true,
   SBMp_flag = typeof(model.prior.λ) == Vector{BayesInference.SparseSBPriorP}
   SBMfull_flag = typeof(model.prior.λ) == Vector{BayesInference.SparseSBPriorFull}
   Q_SDM_flag = any( model.prior.β_Q .> 1.0 )
+  Q_SBM_flag = any( model.prior.p1_Q .> 0.0 ) # should be cleaned up to work with SDM better
   Mbig_flag = model.M > 1
 
   ## sampling
@@ -519,6 +589,11 @@ function mcmc_mmtd!(model::ModMMTD, n_keep::Int, save::Bool=true,
             model.state.ζ[:,1] = rpost_ζ_mtd_marg(model.S, model.state.ζ[:,1],
                 model.prior.α0_Q[1], model.prior.β_Q[1], model.state.lλ[1],
                 model.TT, model.R, model.K)
+         elseif Q_SBM_flag
+             model.state.ζ[:,1] = rpost_ζ_mtd_marg(model.S, model.state.ζ[:,1],
+                 model.prior.α_Q[1], model.prior.p1_Q[1],
+                 model.prior.M_Q[1], model.prior.μ_Q[1],
+                 model.state.lλ[1], model.TT, model.R, model.K)
          else
              model.state.ζ[:,1] = rpost_ζ_mtd_marg(model.S, model.state.ζ[:,1],
                 model.prior.α0_Q[1], model.state.lλ[1],
