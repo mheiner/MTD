@@ -3,7 +3,7 @@
 export ParamsMMTD, PriorMMTD, ModMMTD,
   build_λ_indx, sim_mmtd, symmetricPrior_mmtd, transTensor_mmtd,
   rpost_lΛ_mmtd, rpost_lλ_mmtd, counttrans_mmtd, rpost_lQ_mmtd,
-  rpost_Z_mmtd, rpost_ζ_mmtd, rpost_ζ_mtd_marg, mcmc_mmtd!; # remove the inner functions after testing
+  rpost_Z_mmtd, rpost_ζ_mmtd, rpost_ζ_mtd_marg, MetropIndep_λζ, mcmc_mmtd!; # remove the inner functions after testing
 
 type ParamsMMTD
   lΛ::Vector{Float64}
@@ -544,6 +544,47 @@ function rpost_ζ_mtd_marg(S::Vector{Int}, ζ_old::Vector{Int},
 end
 
 
+
+"""
+    MetropIndep_λζ(S::Vector{Int}, lλ_old::Vector{Float64}, ζ_old::,
+        prior_λ::SparseDirMixPrior,
+        α_Q::Float64, p1_Q::Float64, M_Q::Float64, μ_Q::Float64,
+        TT::Int, R::Int, K::Int)
+
+    Independence Metropolis step for λ and ζ
+"""
+function MetropIndep_λζ(S::Vector{Int}, lλ_old::Vector{Float64}, ζ_old::Vector{Int},
+    prior_λ::SparseDirMixPrior,
+    α_Q::Float64, p1_Q::Float64, M_Q::Float64, μ_Q::Float64,
+    TT::Int, R::Int, K::Int)
+
+  lλ_cand = rSparseDirMix(prior_λ.α, prior_λ.β, true)
+  λ_cand = exp(lλ_cand)
+  ζ_cand = [ StatsBase.sample( WeightVec(λ_cand) ) for i in 1:(TT-R) ]
+
+  N_cand = counttrans_mtd(S, TT, ζ_cand, R, K) # rows are tos, cols are froms
+  N_old = counttrans_mtd(S, TT, ζ_old, R, K) # rows are tos, cols are froms
+
+  lSBMmarg_cand = [ logSBMmarginal(N_cand[:,kk], p1_Q, α_Q, μ_Q, M_Q) for kk in 1:K ]
+  lSBMmarg_old = [ logSBMmarginal(N_old[:,kk], p1_Q, α_Q, μ_Q, M_Q) for kk in 1:K ]
+
+  ll_cand = sum( lSBMmarg_cand )
+  ll_old = sum( lSBMmarg_old )
+
+  lu = log(rand())
+  if lu < (ll_cand - ll_old)
+      lλ_out = lλ_cand
+      ζ_out = ζ_cand
+  else
+      lλ_out = lλ_old
+      ζ_out = ζ_old
+  end
+
+  (lλ_out, ζ_out)
+end
+
+
+
 """
     mcmc_mmtd!(model, n_keep[, save=true, report_filename="out_progress.txt",
        thin=1, report_freq=500, monitor_indx=[1]])
@@ -573,10 +614,13 @@ function mcmc_mmtd!(model::ModMMTD, n_keep::Int, save::Bool=true,
   Q_SDM_flag = any( model.prior.β_Q .> 1.0 )
   Q_SBM_flag = any( model.prior.p1_Q .> 0.0 ) # should be cleaned up to work with SDM better
   Mbig_flag = model.M > 1
+  SDMlamSBMQ_flag = typeof(model.prior.λ) == Vector{BayesInference.SparseDirMixPrior} && Q_SBM_flag
 
   ## sampling
   for i in 1:n_keep
     for j in 1:thin
+
+    jmpstart = model.iter % 25 == 0
 
       if Mbig_flag
         model.state.Z = rpost_Z_mmtd(model.S, model.TT,
@@ -585,37 +629,55 @@ function mcmc_mmtd!(model::ModMMTD, n_keep::Int, save::Bool=true,
       end
 
       if model.M == 1
-         if Q_SDM_flag
-            model.state.ζ[:,1] = rpost_ζ_mtd_marg(model.S, model.state.ζ[:,1],
-                model.prior.α0_Q[1], model.prior.β_Q[1], model.state.lλ[1],
+          if jmpstart && SDMlamSBMQ_flag
+
+              model.state.lλ[1], model.state.ζ[:,1] = MetropIndep_λζ(model.S,
+                model.state.lλ[1], model.state.ζ[:,1], model.prior.λ[1],
+                model.prior.α_Q[1], model.prior.p1_Q[1], model.prior.M_Q[1], model.prior.μ_Q[1],
                 model.TT, model.R, model.K)
-         elseif Q_SBM_flag
-             model.state.ζ[:,1] = rpost_ζ_mtd_marg(model.S, model.state.ζ[:,1],
-                 model.prior.α_Q[1], model.prior.p1_Q[1],
-                 model.prior.M_Q[1], model.prior.μ_Q[1],
-                 model.state.lλ[1], model.TT, model.R, model.K)
-         else
-             model.state.ζ[:,1] = rpost_ζ_mtd_marg(model.S, model.state.ζ[:,1],
-                model.prior.α0_Q[1], model.state.lλ[1],
-                model.TT, model.R, model.K)
+
+          else
+
+              if Q_SDM_flag
+                 model.state.ζ[:,1] = rpost_ζ_mtd_marg(model.S, model.state.ζ[:,1],
+                     model.prior.α0_Q[1], model.prior.β_Q[1], model.state.lλ[1],
+                     model.TT, model.R, model.K)
+              elseif Q_SBM_flag
+                  model.state.ζ[:,1] = rpost_ζ_mtd_marg(model.S, model.state.ζ[:,1],
+                      model.prior.α_Q[1], model.prior.p1_Q[1],
+                      model.prior.M_Q[1], model.prior.μ_Q[1],
+                      model.state.lλ[1], model.TT, model.R, model.K)
+              else
+                  model.state.ζ[:,1] = rpost_ζ_mtd_marg(model.S, model.state.ζ[:,1],
+                     model.prior.α0_Q[1], model.state.lλ[1],
+                     model.TT, model.R, model.K)
+               end
+
+
           end
+
         else
           model.state.ζ = rpost_ζ_mmtd(model.S, model.TT,
             model.state.lλ, model.state.Z, model.state.lQ,
             model.λ_indx, model.R, model.M, model.K)
       end
 
+
       if model.M > 1
         model.state.lΛ = rpost_lΛ_mmtd(model.prior.Λ, model.state.Z, model.M)
       end
 
-      if SBMp_flag || SBMfull_flag
-        model.state.lλ = rpost_lλ_mmtd!(model.prior.λ, model.state.ζ,
-          model.λ_indx[2], model.M)
-      else
-        model.state.lλ = rpost_lλ_mmtd(model.prior.λ, model.state.ζ,
-          model.λ_indx[2], model.M)
+
+      if !jmpstart || !SDMlamSBMQ_flag
+          if SBMp_flag || SBMfull_flag
+              model.state.lλ = rpost_lλ_mmtd!(model.prior.λ, model.state.ζ,
+              model.λ_indx[2], model.M)
+          else
+              model.state.lλ = rpost_lλ_mmtd(model.prior.λ, model.state.ζ,
+              model.λ_indx[2], model.M)
+          end
       end
+
 
       if Q_SDM_flag
           model.state.lQ = rpost_lQ_mmtd(model.S, model.TT, model.prior.α0_Q, model.prior.β_Q,
