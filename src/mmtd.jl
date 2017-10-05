@@ -76,8 +76,8 @@ function sim_mmtd(TT::Int, nburn::Int, R::Int, M::Int, K::Int, λ_indx::Tuple,
 
   Nsim = nburn + TT
 
-  Z = [ StatsBase.sample(WeightVec(Λ)) for i in 1:(Nsim-R) ]
-  ζ = [ StatsBase.sample(WeightVec(λ[m])) for i in 1:(Nsim-R), m in 1:M ]
+  Z = [ StatsBase.sample(Weights(Λ)) for i in 1:(Nsim-R) ]
+  ζ = [ StatsBase.sample(Weights(λ[m])) for i in 1:(Nsim-R), m in 1:M ]
 
   S = Vector{Int}(Nsim)
   S[1:R] = StatsBase.sample(1:K, R)
@@ -86,7 +86,7 @@ function sim_mmtd(TT::Int, nburn::Int, R::Int, M::Int, K::Int, λ_indx::Tuple,
     i = tt - R
     Slagrev_now = S[range(tt-1, -1, R)]
     pvec = copy( Q[Z[i]][:, Slagrev_now[λ_indx[1][Z[i]][ζ[i,Z[i]]]]...] )
-    S[tt] = StatsBase.sample(WeightVec( pvec ))
+    S[tt] = StatsBase.sample(Weights( pvec ))
   end
 
   S[(nburn+1):(Nsim)], Z[(nburn+1):(Nsim-R)], ζ[(nburn+1):(Nsim-R),:]
@@ -370,7 +370,7 @@ function rpost_Z_mmtd(S::Vector{Int}, TT::Int,
     for m in 1:M
       lw[m] = lΛ[m] + lQ[m][ append!([copy(S[tt])], copy( Slagrev_now[λ_indx[1][m][ ζ[i,m] ]] ))... ]
     end
-    Z_out[i] = StatsBase.sample(WeightVec( exp(lw) ))
+    Z_out[i] = StatsBase.sample(Weights( exp(lw) ))
   end
 
   Z_out
@@ -396,9 +396,9 @@ function rpost_ζ_mmtd(S::Vector{Int}, TT::Int,
         for j in 1:λ_lens[m]
           lp[j] = lλ[m][j] + lQ[m][ append!([copy(S[tt])], copy(Slagrev_now[λ_indx[1][m][j]]))... ]
         end
-        ζ_out[i,m] = StatsBase.sample(WeightVec( exp(lp) ))
+        ζ_out[i,m] = StatsBase.sample(Weights( exp(lp) ))
       else
-        ζ_out[i,m] = StatsBase.sample(WeightVec( exp(lλ[m]) ))
+        ζ_out[i,m] = StatsBase.sample(Weights( exp(lλ[m]) ))
       end
     end
   end
@@ -447,7 +447,7 @@ function rpost_ζ_mtd_marg(S::Vector{Int}, ζ_old::Vector{Int},
     end
 
     w = exp( lw - maximum(lw) )
-    ζ_out[i] = StatsBase.sample(WeightVec( w ))
+    ζ_out[i] = StatsBase.sample(Weights( w ))
     N_now = copy(N0)
     N_now[ S[tt], Slagrev_now[ ζ_out[i] ] ] += 1
 
@@ -490,7 +490,7 @@ function rpost_ζ_mtd_marg(S::Vector{Int}, ζ_old::Vector{Int},
     end
 
     w = exp( lw - maximum(lw) )
-    ζ_out[i] = StatsBase.sample(WeightVec( w ))
+    ζ_out[i] = StatsBase.sample(Weights( w ))
     N_now = copy(N0)
     N_now[ S[tt], Slagrev_now[ ζ_out[i] ] ] += 1
 
@@ -534,7 +534,7 @@ function rpost_ζ_mtd_marg(S::Vector{Int}, ζ_old::Vector{Int},
     end
 
     w = exp.( lw - maximum(lw) )
-    ζ_out[i] = StatsBase.sample(WeightVec( w ))
+    ζ_out[i] = StatsBase.sample(Weights( w ))
     N_now = copy(N0)
     N_now[ S[tt], Slagrev_now[ ζ_out[i] ] ] += 1
 
@@ -560,7 +560,7 @@ function MetropIndep_λζ(S::Vector{Int}, lλ_old::Vector{Float64}, ζ_old::Vect
 
   lλ_cand = rSparseDirMix(prior_λ.α, prior_λ.β, true)
   λ_cand = exp.(lλ_cand)
-  ζ_cand = [ StatsBase.sample( WeightVec(λ_cand) ) for i in 1:(TT-R) ]
+  ζ_cand = [ StatsBase.sample( Weights(λ_cand) ) for i in 1:(TT-R) ]
 
   N_cand = counttrans_mtd(S, TT, ζ_cand, R, K) # rows are tos, cols are froms
   N_old = counttrans_mtd(S, TT, ζ_old, R, K) # rows are tos, cols are froms
