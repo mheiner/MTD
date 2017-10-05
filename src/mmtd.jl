@@ -698,11 +698,11 @@ function mcmc_mmtd!(model::ModMMTD, n_keep::Int, save::Bool=true,
     end
 
     if save
-      @inbounds sims.Λ[i,:] = exp( model.state.lΛ )
+      @inbounds sims.Λ[i,:] = exp.( model.state.lΛ )
       @inbounds sims.Z[i,:] = copy(model.state.Z[monitor_indx])
       for m in 1:model.M
-        @inbounds sims.λ[m][i,:] = exp( model.state.lλ[m] )
-        @inbounds sims.Q[m][i,:] = exp( vec( model.state.lQ[m] ) )
+        @inbounds sims.λ[m][i,:] = exp.( model.state.lλ[m] )
+        @inbounds sims.Q[m][i,:] = exp.( vec( model.state.lQ[m] ) )
         @inbounds sims.ζ[m][i,:] = copy(model.state.ζ[monitor_indx,m])
         if SBMp_flag || SBMfull_flag
             sims.p1[i,m] = copy(model.prior.λ[m].p1_now)
