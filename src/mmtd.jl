@@ -345,7 +345,7 @@ function rpost_lQ_mmtd(S::Vector{Int}, TT::Int, α_Q::Vector{Float64},
     ncol = K^m
     Nmat = reshape(N[m], (K, ncol))
     for j in 1:ncol
-      lQ_mats[m][:,j] = log( BayesInference.rpost_sparseStickBreak(Nmat[:,j], p1_Q[m],
+      lQ_mats[m][:,j] = log.( BayesInference.rpost_sparseStickBreak(Nmat[:,j], p1_Q[m],
       α_Q[m], μ_Q[m], M_Q[m])[1] )
     end
     lQ_out[m] = reshape(lQ_mats[m], (fill(K, m+1)...))
@@ -533,7 +533,7 @@ function rpost_ζ_mtd_marg(S::Vector{Int}, ζ_old::Vector{Int},
         end
     end
 
-    w = exp( lw - maximum(lw) )
+    w = exp.( lw - maximum(lw) )
     ζ_out[i] = StatsBase.sample(WeightVec( w ))
     N_now = copy(N0)
     N_now[ S[tt], Slagrev_now[ ζ_out[i] ] ] += 1
@@ -559,7 +559,7 @@ function MetropIndep_λζ(S::Vector{Int}, lλ_old::Vector{Float64}, ζ_old::Vect
     TT::Int, R::Int, K::Int)
 
   lλ_cand = rSparseDirMix(prior_λ.α, prior_λ.β, true)
-  λ_cand = exp(lλ_cand)
+  λ_cand = exp.(lλ_cand)
   ζ_cand = [ StatsBase.sample( WeightVec(λ_cand) ) for i in 1:(TT-R) ]
 
   N_cand = counttrans_mtd(S, TT, ζ_cand, R, K) # rows are tos, cols are froms
