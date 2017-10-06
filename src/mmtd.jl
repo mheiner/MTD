@@ -16,16 +16,17 @@ end
 type PriorMMTD
   Λ::Union{Vector{Float64}, SparseDirMixPrior, SparseSBPrior, SparseSBPriorFull}
   λ::Union{Vector{Vector{Float64}}, Vector{SparseDirMixPrior}, Vector{SparseSBPrior}, Vector{SparseSBPriorP}, Vector{SparseSBPriorFull}}
-  α0_Q::Vector{Matrix{Float64}} # organized in matricized form
-  β_Q::Vector{Float64}
-  p1_Q::Vector{Float64}
-  α_Q::Vector{Float64}
-  μ_Q::Vector{Float64}
-  M_Q::Vector{Float64}
+  Q::Union{Vector{Matrix{Float64}}, Vector{Vector{SparseDirMixPrior}}, Vector{Vector{SparseSBPrior}}}
+  # α0_Q::Vector{Matrix{Float64}} # organized in matricized form
+  # β_Q::Vector{Float64}
+  # p1_Q::Vector{Float64}
+  # α_Q::Vector{Float64}
+  # μ_Q::Vector{Float64}
+  # M_Q::Vector{Float64}
 
-  PriorMMTD(Λ, λ, α0_Q) = new(Λ, λ, α0_Q, ones(Float64, length(Λ)), 0.0, 0.0, 0.0, 0.0) # default to Dirichlet priors on Q
-  PriorMMTD(Λ, λ, α0_Q, β_Q) = new(Λ, λ, α0_Q, β_Q, 0.0, 0.0, 0.0, 0.0)
-  PriorMMTD(Λ, λ, α0_Q, β_Q, p1_Q, α_Q, μ_Q, M_Q) = new(Λ, λ, α0_Q, β_Q, p1_Q, α_Q, μ_Q, M_Q)
+  # PriorMMTD(Λ, λ, α0_Q) = new(Λ, λ, α0_Q, ones(Float64, length(Λ)), 0.0, 0.0, 0.0, 0.0) # default to Dirichlet priors on Q
+  # PriorMMTD(Λ, λ, α0_Q, β_Q) = new(Λ, λ, α0_Q, β_Q, 0.0, 0.0, 0.0, 0.0)
+  # PriorMMTD(Λ, λ, α0_Q, β_Q, p1_Q, α_Q, μ_Q, M_Q) = new(Λ, λ, α0_Q, β_Q, p1_Q, α_Q, μ_Q, M_Q)
 end
 
 type ModMMTD
@@ -49,6 +50,8 @@ type PostSimsMMTD
   Z::Matrix{Int}
   ζ::Array{Matrix{Int}}
   p1::Matrix{Float64}
+
+  PostSimsMMTD(Λ, λ, Q, Z, ζ) = new(Λ, λ, Q, Z, ζ, nothing)
 end
 
 
@@ -96,7 +99,7 @@ end
 """
     symmetricPrior_mmtd(size_Λ, size_λ, size_Q, R, M, K, λ_indx)
 """
-function symmetricPrior_mmtd(size_Λ::Float64, size_λ::Float64, size_Q::Float64,
+function symmetricDirPrior_mmtd(size_Λ::Float64, size_λ::Float64, size_Q::Float64,
   R::Int, M::Int, K::Int, λ_indx::Tuple)
 
   # λ_indx[2] contains a tuple of lengths of λ vectors
@@ -285,13 +288,14 @@ function counttrans_mtd(S::Vector{Int}, TT::Int, ζ::Vector{Int},
 end
 
 """
-    rpost_lQ_mmtd(S, TT, α0_Q, [β_Q,] Z, ζ, λ_indx, R, M, K)
+    rpost_lQ_mmtd(S, TT, prior, Z, ζ, λ_indx, R, M, K)
 """
-function rpost_lQ_mmtd(S::Vector{Int}, TT::Int, α0_Q::Vector{Matrix{Float64}},
+function rpost_lQ_mmtd(S::Vector{Int}, TT::Int, prior::Vector{Matrix{Float64}},
   Z::Vector{Int}, ζ::Matrix{Int},
   λ_indx::Tuple, R::Int, M::Int, K::Int)
 
   ## initialize
+  α0_Q = copy(prior)
   lQ_mats = [ Matrix{Float64}(K, K^m) for m in 1:M ]
   lQ_out = [ reshape(lQ_mats[m], (fill(K, m+1)...)) for m in 1:M ]
 
@@ -309,8 +313,9 @@ function rpost_lQ_mmtd(S::Vector{Int}, TT::Int, α0_Q::Vector{Matrix{Float64}},
 
   lQ_out
 end
-function rpost_lQ_mmtd(S::Vector{Int}, TT::Int, α0_Q::Vector{Matrix{Float64}},
-  β_Q::Vector{Float64}, Z::Vector{Int}, ζ::Matrix{Int},
+function rpost_lQ_mmtd(S::Vector{Int}, TT::Int,
+  prior::Vector{Vector{SparseDirMixPrior}},
+  Z::Vector{Int}, ζ::Matrix{Int},
   λ_indx::Tuple, R::Int, M::Int, K::Int)
 
   ## initialize
@@ -322,17 +327,18 @@ function rpost_lQ_mmtd(S::Vector{Int}, TT::Int, α0_Q::Vector{Matrix{Float64}},
   for m in 1:M
     ncol = K^m
     Nmat = reshape(N[m], (K, ncol))
-    α1_Q = α0_Q[m] + Nmat
     for j in 1:ncol
-      lQ_mats[m][:,j] = BayesInference.rSparseDirMix(α1_Q[:,j], β_Q[m], true)
+      α1 = prior[m][j].α .+ Nmat[:,j]
+      lQ_mats[m][:,j] = BayesInference.rSparseDirMix(α1, prior[m][j].β, true)
     end
     lQ_out[m] = reshape(lQ_mats[m], (fill(K, m+1)...))
   end
 
   lQ_out
 end
-function rpost_lQ_mmtd(S::Vector{Int}, TT::Int, α_Q::Vector{Float64},
-    p1_Q::Vector{Float64}, M_Q::Vector{Float64}, μ_Q::Vector{Float64},
+function rpost_lQ_mmtd(S::Vector{Int}, TT::Int, prior::Vector{Vector{SparseSBPrior}},
+    # α_Q::Vector{Float64},
+    # p1_Q::Vector{Float64}, M_Q::Vector{Float64}, μ_Q::Vector{Float64},
     Z::Vector{Int}, ζ::Matrix{Int}, λ_indx::Tuple, R::Int, M::Int, K::Int)
 
   ## initialize
@@ -345,8 +351,8 @@ function rpost_lQ_mmtd(S::Vector{Int}, TT::Int, α_Q::Vector{Float64},
     ncol = K^m
     Nmat = reshape(N[m], (K, ncol))
     for j in 1:ncol
-      lQ_mats[m][:,j] = log.( BayesInference.rpost_sparseStickBreak(Nmat[:,j], p1_Q[m],
-      α_Q[m], μ_Q[m], M_Q[m])[1] )
+      lQ_mats[m][:,j] = log.( BayesInference.rpost_sparseStickBreak(Nmat[:,j],
+      prior[m][j].p1, prior[m][j].α, prior[m][j].μ, prior[m][j].M)[1] )
     end
     lQ_out[m] = reshape(lQ_mats[m], (fill(K, m+1)...))
   end
@@ -408,14 +414,17 @@ end
 
 
 """
-    rpost_ζ_mtd_marg(S, ζ_old, lλ, α0_Q, [β_Q,] TT, R, K)
+    rpost_ζ_mtd_marg(S, ζ_old, lλ, prior_Q, TT, R, K)
 
-    Full conditinal updates for ζ marginalizing over Q
+    Full conditinal updates for ζ marginalizing over Q (currently only implemented for M=1)
 """
 function rpost_ζ_mtd_marg(S::Vector{Int}, ζ_old::Vector{Int},
-    α0_Q::Matrix{Float64}, lλ::Vector{Float64},
+    prior_Q::Matrix{Float64},
+    # α0_Q::Matrix{Float64},
+    lλ::Vector{Float64},
     TT::Int, R::Int, K::Int)
 
+  α0_Q = copy(prior_Q)
   ζ_out = copy(ζ_old)
   N_now = counttrans_mtd(S, TT, ζ_old, R, K) # rows are tos, cols are froms
 
@@ -424,7 +433,7 @@ function rpost_ζ_mtd_marg(S::Vector{Int}, ζ_old::Vector{Int},
     Slagrev_now = S[range(tt-1, -1, R)]
     N0 = copy(N_now)
     N0[ S[tt], Slagrev_now[ ζ_out[i] ] ] -= 1
-    α1_Q = α0_Q + N0
+    α1_Q = α0_Q .+ N0
     eSt = [1.0*(ii==S[tt]) for ii in 1:K]
 
     kuse = unique(Slagrev_now)
@@ -456,7 +465,9 @@ function rpost_ζ_mtd_marg(S::Vector{Int}, ζ_old::Vector{Int},
   ζ_out
 end
 function rpost_ζ_mtd_marg(S::Vector{Int}, ζ_old::Vector{Int},
-    α0_Q::Matrix{Float64}, β_Q::Float64, lλ::Vector{Float64},
+    prior_Q::Vector{SparseDirMixPrior}, # assumes M=1
+    # α0_Q::Matrix{Float64}, β_Q::Float64,
+    lλ::Vector{Float64},
     TT::Int, R::Int, K::Int)
 
   ζ_out = copy(ζ_old)
@@ -473,8 +484,8 @@ function rpost_ζ_mtd_marg(S::Vector{Int}, ζ_old::Vector{Int},
     kuse = unique(Slagrev_now)
     nkuse = length(kuse)
 
-    lSDMmarg0 = [ logSDMmarginal(N0[:,kk], α0_Q[:,kk], β_Q) for kk in kuse ]
-    lSDMmarg1 = [ logSDMmarginal(N0[:,kk] + eSt, α0_Q[:,kk], β_Q) for kk in kuse ]
+    lSDMmarg0 = [ logSDMmarginal(N0[:,kk], prior_Q[kk].α, prior_Q[kk].β) for kk in kuse ]
+    lSDMmarg1 = [ logSDMmarginal(N0[:,kk] + eSt, prior_Q[kk].α, prior_Q[kk].β) for kk in kuse ]
 
     lw = zeros(Float64, R)
 
@@ -499,7 +510,8 @@ function rpost_ζ_mtd_marg(S::Vector{Int}, ζ_old::Vector{Int},
   ζ_out
 end
 function rpost_ζ_mtd_marg(S::Vector{Int}, ζ_old::Vector{Int},
-    α_Q::Float64, p1_Q::Float64, M_Q::Float64, μ_Q::Float64,
+    prior_Q::Vector{SparseSBPrior}, # assumes M=1
+    # α_Q::Float64, p1_Q::Float64, M_Q::Float64, μ_Q::Float64,
     lλ::Vector{Float64},
     TT::Int, R::Int, K::Int)
 
@@ -511,14 +523,13 @@ function rpost_ζ_mtd_marg(S::Vector{Int}, ζ_old::Vector{Int},
     Slagrev_now = S[range(tt-1, -1, R)]
     N0 = copy(N_now)
     N0[ S[tt], Slagrev_now[ ζ_out[i] ] ] -= 1
-    # α1_Q = α0_Q + N0
     eSt = [1*(ii==S[tt]) for ii in 1:K]
 
     kuse = unique(Slagrev_now)
     nkuse = length(kuse)
 
-    lSDMmarg0 = [ logSBMmarginal(N0[:,kk], p1_Q, α_Q, μ_Q, M_Q) for kk in kuse ]
-    lSDMmarg1 = [ logSBMmarginal(N0[:,kk] + eSt, p1_Q, α_Q, μ_Q, M_Q) for kk in kuse ]
+    lSDMmarg0 = [ logSBMmarginal(N0[:,kk], prior_Q[kk].p1, prior_Q[kk].α, prior_Q[kk].μ, prior_Q[kk].M) for kk in kuse ]
+    lSDMmarg1 = [ logSBMmarginal(N0[:,kk] + eSt, prior_Q[kk].p1, prior_Q[kk].α, prior_Q[kk].μ, prior_Q[kk].M) for kk in kuse ]
 
     lw = zeros(Float64, R)
 
@@ -547,15 +558,16 @@ end
 
 """
     MetropIndep_λζ(S::Vector{Int}, lλ_old::Vector{Float64}, ζ_old::,
-        prior_λ::SparseDirMixPrior,
-        α_Q::Float64, p1_Q::Float64, M_Q::Float64, μ_Q::Float64,
+        prior_λ, prior_Q,
         TT::Int, R::Int, K::Int)
 
-    Independence Metropolis step for λ and ζ
+    Independence Metropolis step for λ and ζ.
+    Currently assumes M=1.
 """
 function MetropIndep_λζ(S::Vector{Int}, lλ_old::Vector{Float64}, ζ_old::Vector{Int},
     prior_λ::SparseDirMixPrior,
-    α_Q::Float64, p1_Q::Float64, M_Q::Float64, μ_Q::Float64,
+    prior_Q::Vector{SparseSBPrior},
+    # α_Q::Float64, p1_Q::Float64, M_Q::Float64, μ_Q::Float64,
     TT::Int, R::Int, K::Int)
 
   lλ_cand = rSparseDirMix(prior_λ.α, prior_λ.β, true)
@@ -565,8 +577,96 @@ function MetropIndep_λζ(S::Vector{Int}, lλ_old::Vector{Float64}, ζ_old::Vect
   N_cand = counttrans_mtd(S, TT, ζ_cand, R, K) # rows are tos, cols are froms
   N_old = counttrans_mtd(S, TT, ζ_old, R, K) # rows are tos, cols are froms
 
-  lSBMmarg_cand = [ logSBMmarginal(N_cand[:,kk], p1_Q, α_Q, μ_Q, M_Q) for kk in 1:K ]
-  lSBMmarg_old = [ logSBMmarginal(N_old[:,kk], p1_Q, α_Q, μ_Q, M_Q) for kk in 1:K ]
+  lSBMmarg_cand = [ logSBMmarginal(N_cand[:,kk], prior_Q[kk].p1, prior_Q[kk].α, prior_Q[kk].μ, prior_Q[kk].M) for kk in 1:K ]
+  lSBMmarg_old = [ logSBMmarginal(N_old[:,kk], prior_Q[kk].p1, prior_Q[kk].α, prior_Q[kk].μ, prior_Q[kk].M) for kk in 1:K ]
+
+  ll_cand = sum( lSBMmarg_cand )
+  ll_old = sum( lSBMmarg_old )
+
+  lu = log(rand())
+  if lu < (ll_cand - ll_old)
+      lλ_out = lλ_cand
+      ζ_out = ζ_cand
+  else
+      lλ_out = lλ_old
+      ζ_out = ζ_old
+  end
+
+  (lλ_out, ζ_out)
+end
+function MetropIndep_λζ(S::Vector{Int}, lλ_old::Vector{Float64}, ζ_old::Vector{Int},
+    prior_λ::Vector{Float64},
+    prior_Q::Vector{SparseSBPrior},
+    # α_Q::Float64, p1_Q::Float64, M_Q::Float64, μ_Q::Float64,
+    TT::Int, R::Int, K::Int)
+
+  lλ_cand = rDirichlet(prior_λ.α, true)
+  λ_cand = exp.(lλ_cand)
+  ζ_cand = [ StatsBase.sample( Weights(λ_cand) ) for i in 1:(TT-R) ]
+
+  N_cand = counttrans_mtd(S, TT, ζ_cand, R, K) # rows are tos, cols are froms
+  N_old = counttrans_mtd(S, TT, ζ_old, R, K) # rows are tos, cols are froms
+
+  lSBMmarg_cand = [ logSBMmarginal(N_cand[:,kk], prior_Q[kk].p1, prior_Q[kk].α, prior_Q[kk].μ, prior_Q[kk].M) for kk in 1:K ]
+  lSBMmarg_old = [ logSBMmarginal(N_old[:,kk], prior_Q[kk].p1, prior_Q[kk].α, prior_Q[kk].μ, prior_Q[kk].M) for kk in 1:K ]
+
+  ll_cand = sum( lSBMmarg_cand )
+  ll_old = sum( lSBMmarg_old )
+
+  lu = log(rand())
+  if lu < (ll_cand - ll_old)
+      lλ_out = lλ_cand
+      ζ_out = ζ_cand
+  else
+      lλ_out = lλ_old
+      ζ_out = ζ_old
+  end
+
+  (lλ_out, ζ_out)
+end
+function MetropIndep_λζ(S::Vector{Int}, lλ_old::Vector{Float64}, ζ_old::Vector{Int},
+    prior_λ::SparseDirMixPrior,
+    prior_Q::Matrix{Float64},
+    TT::Int, R::Int, K::Int)
+
+  lλ_cand = rSparseDirMix(prior_λ.α, prior_λ.β, true)
+  λ_cand = exp.(lλ_cand)
+  ζ_cand = [ StatsBase.sample( Weights(λ_cand) ) for i in 1:(TT-R) ]
+
+  N_cand = counttrans_mtd(S, TT, ζ_cand, R, K) # rows are tos, cols are froms
+  N_old = counttrans_mtd(S, TT, ζ_old, R, K) # rows are tos, cols are froms
+
+  lSBMmarg_cand = [ BayesInference.lmvbeta(N_cand[:,kk] .+ prior_Q[:,kk]) for kk in 1:K ] # can ignore denominator
+  lSBMmarg_old = [ BayesInference.lmvbeta(N_old[:,kk] .+ prior_Q[:,kk]) for kk in 1:K ]
+
+  ll_cand = sum( lSBMmarg_cand )
+  ll_old = sum( lSBMmarg_old )
+
+  lu = log(rand())
+  if lu < (ll_cand - ll_old)
+      lλ_out = lλ_cand
+      ζ_out = ζ_cand
+  else
+      lλ_out = lλ_old
+      ζ_out = ζ_old
+  end
+
+  (lλ_out, ζ_out)
+end
+function MetropIndep_λζ(S::Vector{Int}, lλ_old::Vector{Float64}, ζ_old::Vector{Int},
+    prior_λ::Vector{Float64},
+    prior_Q::Matrix{Float64},
+    TT::Int, R::Int, K::Int)
+
+  lλ_cand = rDirichlet(prior_λ.α, true)
+  λ_cand = exp.(lλ_cand)
+  ζ_cand = [ StatsBase.sample( Weights(λ_cand) ) for i in 1:(TT-R) ]
+
+  N_cand = counttrans_mtd(S, TT, ζ_cand, R, K) # rows are tos, cols are froms
+  N_old = counttrans_mtd(S, TT, ζ_old, R, K) # rows are tos, cols are froms
+
+  lSBMmarg_cand = [ BayesInference.lmvbeta(N_cand[:,kk] .+ prior_Q[:,kk]) for kk in 1:K ] # can ignore denominator
+  lSBMmarg_old = [ BayesInference.lmvbeta(N_old[:,kk] .+ prior_Q[:,kk]) for kk in 1:K ]
 
   ll_cand = sum( lSBMmarg_cand )
   ll_old = sum( lSBMmarg_old )
@@ -584,139 +684,113 @@ function MetropIndep_λζ(S::Vector{Int}, lλ_old::Vector{Float64}, ζ_old::Vect
 end
 
 
-
 """
-    mcmc_mmtd!(model, n_keep[, save=true, report_filename="out_progress.txt",
-       thin=1, report_freq=500, monitor_indx=[1]])
+mcmc_mmtd!(model, n_keep[, save=true, report_filename="out_progress.txt",
+thin=1, report_freq=500, monitor_indx=[1]])
 """
 function mcmc_mmtd!(model::ModMMTD, n_keep::Int, save::Bool=true,
-  report_filename::String="out_progress.txt", thin::Int=1, report_freq::Int=1000;
-  monitor_indx::Vector{Int}=[1])
+    report_filename::String="out_progress.txt", thin::Int=1, jmpstart_iter::Int=25,
+    report_freq::Int=1000;
+    monitor_indx::Vector{Int}=[1])
 
-  ## output files
-  report_file = open(report_filename, "a+")
-  write(report_file, "Commencing MCMC at $(now())
+    ## output files
+    report_file = open(report_filename, "a+")
+    write(report_file, "Commencing MCMC at $(now())
     for $(n_keep * thin) iterations.\n")
 
-  if save
-    monitor_len = length(monitor_indx)
-    sims = PostSimsMMTD( Matrix{Float64}(n_keep, model.M),
-      [ Matrix{Float64}(n_keep, model.λ_indx[2][m]) for m in 1:model.M ],
-      [ Matrix{Float64}(n_keep, model.K^(m+1)) for m in 1:model.M ],
-      Matrix{Int}(n_keep, monitor_len),
-      [ Matrix{Int}(n_keep, monitor_len) for m in 1:model.M ],
-      Matrix{Float64}(n_keep, model.M) )
-  end
-
-  ## flags
-  SBMp_flag = typeof(model.prior.λ) == Vector{BayesInference.SparseSBPriorP}
-  SBMfull_flag = typeof(model.prior.λ) == Vector{BayesInference.SparseSBPriorFull}
-  Q_SDM_flag = any( model.prior.β_Q .> 1.0 )
-  Q_SBM_flag = any( model.prior.p1_Q .> 0.0 ) # should be cleaned up to work with SDM better
-  Mbig_flag = model.M > 1
-  SDMlamSBMQ_flag = typeof(model.prior.λ) == Vector{BayesInference.SparseDirMixPrior} && Q_SBM_flag
-
-  ## sampling
-  for i in 1:n_keep
-    for j in 1:thin
-
-    jmpstart = model.iter % 25 == 0
-
-      if Mbig_flag
-        model.state.Z = rpost_Z_mmtd(model.S, model.TT,
-          model.state.lΛ, model.state.ζ, model.state.lQ, model.λ_indx,
-          model.R, model.M)
-      end
-
-      if model.M == 1
-          if jmpstart && SDMlamSBMQ_flag
-
-              model.state.lλ[1], model.state.ζ[:,1] = MetropIndep_λζ(model.S,
-                model.state.lλ[1], model.state.ζ[:,1], model.prior.λ[1],
-                model.prior.α_Q[1], model.prior.p1_Q[1], model.prior.M_Q[1], model.prior.μ_Q[1],
-                model.TT, model.R, model.K)
-
-          else
-
-              if Q_SDM_flag
-                 model.state.ζ[:,1] = rpost_ζ_mtd_marg(model.S, model.state.ζ[:,1],
-                     model.prior.α0_Q[1], model.prior.β_Q[1], model.state.lλ[1],
-                     model.TT, model.R, model.K)
-              elseif Q_SBM_flag
-                  model.state.ζ[:,1] = rpost_ζ_mtd_marg(model.S, model.state.ζ[:,1],
-                      model.prior.α_Q[1], model.prior.p1_Q[1],
-                      model.prior.M_Q[1], model.prior.μ_Q[1],
-                      model.state.lλ[1], model.TT, model.R, model.K)
-              else
-                  model.state.ζ[:,1] = rpost_ζ_mtd_marg(model.S, model.state.ζ[:,1],
-                     model.prior.α0_Q[1], model.state.lλ[1],
-                     model.TT, model.R, model.K)
-               end
-
-
-          end
-
-        else
-          model.state.ζ = rpost_ζ_mmtd(model.S, model.TT,
-            model.state.lλ, model.state.Z, model.state.lQ,
-            model.λ_indx, model.R, model.M, model.K)
-      end
-
-
-      if model.M > 1
-        model.state.lΛ = rpost_lΛ_mmtd(model.prior.Λ, model.state.Z, model.M)
-      end
-
-
-      if !jmpstart || !SDMlamSBMQ_flag
-          if SBMp_flag || SBMfull_flag
-              model.state.lλ = rpost_lλ_mmtd!(model.prior.λ, model.state.ζ,
-              model.λ_indx[2], model.M)
-          else
-              model.state.lλ = rpost_lλ_mmtd(model.prior.λ, model.state.ζ,
-              model.λ_indx[2], model.M)
-          end
-      end
-
-
-      if Q_SDM_flag
-          model.state.lQ = rpost_lQ_mmtd(model.S, model.TT, model.prior.α0_Q, model.prior.β_Q,
-            model.state.Z, model.state.ζ, model.λ_indx, model.R, model.M, model.K)
-      elseif Q_SBM_flag
-          model.state.lQ = rpost_lQ_mmtd(model.S, model.TT, model.prior.α_Q, model.prior.p1_Q,
-            model.prior.M_Q, model.prior.μ_Q,
-            model.state.Z, model.state.ζ, model.λ_indx, model.R, model.M, model.K)
-      else
-          model.state.lQ = rpost_lQ_mmtd(model.S, model.TT, model.prior.α0_Q,
-            model.state.Z, model.state.ζ, model.λ_indx, model.R, model.M, model.K)
-      end
-
-      model.iter += 1
-      if model.iter % report_freq == 0
-        write(report_file, "Iter $(model.iter) at $(now())\n")
-      end
-    end
-
-    if save
-      @inbounds sims.Λ[i,:] = exp.( model.state.lΛ )
-      @inbounds sims.Z[i,:] = copy(model.state.Z[monitor_indx])
-      for m in 1:model.M
-        @inbounds sims.λ[m][i,:] = exp.( model.state.lλ[m] )
-        @inbounds sims.Q[m][i,:] = exp.( vec( model.state.lQ[m] ) )
-        @inbounds sims.ζ[m][i,:] = copy(model.state.ζ[monitor_indx,m])
-        if SBMp_flag || SBMfull_flag
-            sims.p1[i,m] = copy(model.prior.λ[m].p1_now)
+        if save
+            monitor_len = length(monitor_indx)
+            sims = PostSimsMMTD( Matrix{Float64}(n_keep, model.M),
+                [ Matrix{Float64}(n_keep, model.λ_indx[2][m]) for m in 1:model.M ],
+                [ Matrix{Float64}(n_keep, model.K^(m+1)) for m in 1:model.M ],
+                Matrix{Int}(n_keep, monitor_len),
+                [ Matrix{Int}(n_keep, monitor_len) for m in 1:model.M ],
+                Matrix{Float64}(n_keep, model.M) )
         end
-      end
+
+        ## flags
+        Mbig_flag = model.M > 1
+        λSBMp_flag = typeof(model.prior.λ) == Vector{BayesInference.SparseSBPriorP}
+        λSBMfull_flag = typeof(model.prior.λ) == Vector{BayesInference.SparseSBPriorFull}
+
+
+        ## sampling
+        for i in 1:n_keep
+            for j in 1:thin
+
+                jmpstart = (model.iter % jmpstart_iter == 0)
+
+                if Mbig_flag
+
+                    model.state.Z = rpost_Z_mmtd(model.S, model.TT,
+                        model.state.lΛ, model.state.ζ, model.state.lQ, model.λ_indx,
+                        model.R, model.M)
+
+                    model.state.lΛ = rpost_lΛ_mmtd(model.prior.Λ, model.state.Z, model.M)
+
+                    model.state.ζ = rpost_ζ_mmtd(model.S, model.TT,
+                        model.state.lλ, model.state.Z, model.state.lQ,
+                        model.λ_indx, model.R, model.M, model.K)
+
+                else
+
+                    if jmpstart
+
+                        model.state.lλ[1], model.state.ζ[:,1] = MetropIndep_λζ(model.S,
+                            model.state.lλ[1], model.state.ζ[:,1], model.prior.λ[1],
+                            model.prior.Q[1],
+                            model.TT, model.R, model.K)
+
+                    else
+
+                        model.state.ζ[:,1] = rpost_ζ_mtd_marg(model.S, model.state.ζ[:,1],
+                            model.prior.Q[1], model.state.lλ[1],
+                            model.TT, model.R, model.K)
+
+                        if λSBMp_flag || λSBMfull_flag
+                            model.state.lλ = rpost_lλ_mmtd!(model.prior.λ, model.state.ζ,
+                                model.λ_indx[2], model.M)
+                        else
+                            model.state.lλ = rpost_lλ_mmtd(model.prior.λ, model.state.ζ,
+                                model.λ_indx[2], model.M)
+                        end
+
+
+                    end
+
+                end
+
+                model.state.lQ = rpost_lQ_mmtd(model.S, model.TT, model.prior.Q,
+                    model.state.Z, model.state.ζ, model.λ_indx,
+                    model.R, model.M, model.K)
+
+
+                model.iter += 1
+                if model.iter % report_freq == 0
+                    write(report_file, "Iter $(model.iter) at $(now())\n")
+                end
+            end
+
+            if save
+                @inbounds sims.Λ[i,:] = exp.( model.state.lΛ )
+                @inbounds sims.Z[i,:] = copy(model.state.Z[monitor_indx])
+                for m in 1:model.M
+                    @inbounds sims.λ[m][i,:] = exp.( model.state.lλ[m] )
+                    @inbounds sims.Q[m][i,:] = exp.( vec( model.state.lQ[m] ) )
+                    @inbounds sims.ζ[m][i,:] = copy(model.state.ζ[monitor_indx,m])
+                    if SBMp_flag || SBMfull_flag
+                        sims.p1[i,m] = copy(model.prior.λ[m].p1_now)
+                    end
+                end
+            end
+        end
+
+        close(report_file)
+
+        if save
+            return sims
+        else
+            return model.iter
+        end
+
     end
-  end
-
-  close(report_file)
-
-  if save
-    return sims
-  else
-    return model.iter
-  end
-
-end
