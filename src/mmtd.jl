@@ -1,7 +1,7 @@
 # mmtd.jl
 
 export ParamsMMTD, PriorMMTD, ModMMTD,
-  build_λ_indx, sim_mmtd, symmetricPrior_mmtd, transTensor_mmtd,
+  build_λ_indx, sim_mmtd, symmetricDirPrior_mmtd, transTensor_mmtd,
   rpost_lΛ_mmtd, rpost_lλ_mmtd, counttrans_mmtd, rpost_lQ_mmtd,
   rpost_Z_mmtd, rpost_ζ_mmtd, rpost_ζ_mtd_marg, MetropIndep_λζ, mcmc_mmtd!; # remove the inner functions after testing
 
@@ -52,6 +52,7 @@ type PostSimsMMTD
   p1::Matrix{Float64}
 
   PostSimsMMTD(Λ, λ, Q, Z, ζ) = new(Λ, λ, Q, Z, ζ, nothing)
+  PostSimsMMTD(Λ, λ, Q, Z, ζ, p1) = new(Λ, λ, Q, Z, ζ, p1)
 end
 
 
@@ -455,7 +456,7 @@ function rpost_ζ_mtd_marg(S::Vector{Int}, ζ_old::Vector{Int},
         end
     end
 
-    w = exp( lw - maximum(lw) )
+    w = exp.( lw - maximum(lw) )
     ζ_out[i] = StatsBase.sample(Weights( w ))
     N_now = copy(N0)
     N_now[ S[tt], Slagrev_now[ ζ_out[i] ] ] += 1
@@ -500,7 +501,7 @@ function rpost_ζ_mtd_marg(S::Vector{Int}, ζ_old::Vector{Int},
         end
     end
 
-    w = exp( lw - maximum(lw) )
+    w = exp.( lw - maximum(lw) )
     ζ_out[i] = StatsBase.sample(Weights( w ))
     N_now = copy(N0)
     N_now[ S[tt], Slagrev_now[ ζ_out[i] ] ] += 1
@@ -600,7 +601,7 @@ function MetropIndep_λζ(S::Vector{Int}, lλ_old::Vector{Float64}, ζ_old::Vect
     # α_Q::Float64, p1_Q::Float64, M_Q::Float64, μ_Q::Float64,
     TT::Int, R::Int, K::Int)
 
-  lλ_cand = rDirichlet(prior_λ.α, true)
+  lλ_cand = rDirichlet(prior_λ, true)
   λ_cand = exp.(lλ_cand)
   ζ_cand = [ StatsBase.sample( Weights(λ_cand) ) for i in 1:(TT-R) ]
 
@@ -658,7 +659,7 @@ function MetropIndep_λζ(S::Vector{Int}, lλ_old::Vector{Float64}, ζ_old::Vect
     prior_Q::Matrix{Float64},
     TT::Int, R::Int, K::Int)
 
-  lλ_cand = rDirichlet(prior_λ.α, true)
+  lλ_cand = rDirichlet(prior_λ, true)
   λ_cand = exp.(lλ_cand)
   ζ_cand = [ StatsBase.sample( Weights(λ_cand) ) for i in 1:(TT-R) ]
 
@@ -685,8 +686,8 @@ end
 
 
 """
-mcmc_mmtd!(model, n_keep[, save=true, report_filename="out_progress.txt",
-thin=1, report_freq=500, monitor_indx=[1]])
+    mcmc_mmtd!(model, n_keep[, save=true, report_filename="out_progress.txt",
+        thin=1, report_freq=500, monitor_indx=[1]])
 """
 function mcmc_mmtd!(model::ModMMTD, n_keep::Int, save::Bool=true,
     report_filename::String="out_progress.txt", thin::Int=1, jmpstart_iter::Int=25,
@@ -778,7 +779,7 @@ function mcmc_mmtd!(model::ModMMTD, n_keep::Int, save::Bool=true,
                     @inbounds sims.λ[m][i,:] = exp.( model.state.lλ[m] )
                     @inbounds sims.Q[m][i,:] = exp.( vec( model.state.lQ[m] ) )
                     @inbounds sims.ζ[m][i,:] = copy(model.state.ζ[monitor_indx,m])
-                    if SBMp_flag || SBMfull_flag
+                    if λSBMp_flag || λSBMfull_flag
                         sims.p1[i,m] = copy(model.prior.λ[m].p1_now)
                     end
                 end
