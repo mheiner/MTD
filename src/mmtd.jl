@@ -853,7 +853,7 @@ function mcmc_mmtd!(model::ModMMTD, n_keep::Int, save::Bool=true,
                     end
                     if QSBMp_flag || QSBMfull_flag
                         for kk in 1:model.K^m
-                            sims.p1Q[m][i,kk] = copy( model.prior_Q[m][kk].p1_now )
+                            sims.p1Q[m][i,kk] = copy( model.prior.Q[m][kk].p1_now )
                         end
                     end
                 end
