@@ -1,6 +1,6 @@
 # general.jl
 
-export create_froms, count_trans_R, transTens_MLE;
+export create_froms, count_trans_R, transTens_MLE, forecDist;
 
 ## expand.grid() from R
 # using Iterators
@@ -103,4 +103,33 @@ function transTens_MLE(S::Vector{Int}, K::Int, R::Int)
 end
 function transTens_MLE(N::Union{Array{Float64}, Array{Int64}})
     N ./ sum(N, 1)
+end
+
+
+
+
+"""
+    forecDist(Slag::Vector{Int}, λ::Vector{Float64}, Q::Matrix{Float64})
+
+Computes the forecast distribution given lagged values and parameters.
+
+### Example
+```julia
+    lam = [0.6, 0.3, 0.1]
+    Q = reshape([0.7, 0.3, 0.25, 0.75], (2,2))
+    Slagrev = [1,1,2]
+    forecDist(Slagrev, lam, Q)
+```
+"""
+function forecDist(Slagrev::Vector{Int}, λ::Vector{Float64}, Q::Matrix{Float64})
+    K = size(Q)[1]
+    R = size(λ)[1]
+    assert(size(Slagrev)[1] == R)
+    w = zeros(Float64, K)
+    for k in 1:K
+        for ℓ in 1:R
+            w[k] += λ[ℓ] * Q[k, Slagrev[ℓ]]
+        end
+    end
+    w
 end

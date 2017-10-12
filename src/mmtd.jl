@@ -16,7 +16,7 @@ end
 type PriorMMTD
   Λ::Union{Vector{Float64}, SparseDirMixPrior, SparseSBPrior, SparseSBPriorFull}
   λ::Union{Vector{Vector{Float64}}, Vector{SparseDirMixPrior}, Vector{SparseSBPrior}, Vector{SparseSBPriorP}, Vector{SparseSBPriorFull}}
-  Q::Union{Vector{Matrix{Float64}}, Vector{Vector{SparseDirMixPrior}}, Vector{Vector{SparseSBPrior}}}
+  Q::Union{Vector{Matrix{Float64}}, Vector{Vector{SparseDirMixPrior}}, Vector{Vector{SparseSBPrior}}, Vector{Vector{SparseSBPriorP}}}
   # α0_Q::Vector{Matrix{Float64}} # organized in matricized form
   # β_Q::Vector{Float64}
   # p1_Q::Vector{Float64}
@@ -43,16 +43,32 @@ type ModMMTD
   ModMMTD(R, M, K, TT, S, prior, state, λ_indx) = new(R, M, K, TT, S, prior, state, λ_indx, UInt64(0))
 end
 
+### Keep around for compatibility with old simulations
+# type PostSimsMMTD
+#   Λ::Matrix{Float64}
+#   λ::Array{Matrix{Float64}}
+#   Q::Array{Matrix{Float64}}
+#   Z::Matrix{Int}
+#   ζ::Array{Matrix{Int}}
+#   p1::Matrix{Float64}
+#
+#   PostSimsMMTD(Λ, λ, Q, Z, ζ) = new(Λ, λ, Q, Z, ζ, nothing)
+#   PostSimsMMTD(Λ, λ, Q, Z, ζ, p1) = new(Λ, λ, Q, Z, ζ, p1)
+# end
+
 type PostSimsMMTD
   Λ::Matrix{Float64}
   λ::Array{Matrix{Float64}}
   Q::Array{Matrix{Float64}}
   Z::Matrix{Int}
   ζ::Array{Matrix{Int}}
-  p1::Matrix{Float64}
+  p1λ::Matrix{Float64} # SBM π
+  p1Q::Vector{Matrix{Float64}} # SBM π
 
-  PostSimsMMTD(Λ, λ, Q, Z, ζ) = new(Λ, λ, Q, Z, ζ, nothing)
-  PostSimsMMTD(Λ, λ, Q, Z, ζ, p1) = new(Λ, λ, Q, Z, ζ, p1)
+  PostSimsMMTD(Λ, λ, Q, Z, ζ) = new(Λ, λ, Q, Z, ζ, nothing, nothing)
+  PostSimsMMTD(Λ, λ, Q, Z, ζ, p1λ) = new(Λ, λ, Q, Z, ζ, p1λ, nothing)
+  PostSimsMMTD(Λ, λ, Q, Z, ζ, p1Q) = new(Λ, λ, Q, Z, ζ, nothing, p1Q)
+  PostSimsMMTD(Λ, λ, Q, Z, ζ, p1λ, p1Q) = new(Λ, λ, Q, Z, ζ, p1λ, p1Q)
 end
 
 
@@ -360,6 +376,34 @@ function rpost_lQ_mmtd(S::Vector{Int}, TT::Int, prior::Vector{Vector{SparseSBPri
 
   lQ_out
 end
+function rpost_lQ_mmtd!(S::Vector{Int}, TT::Int, prior::Vector{Vector{SparseSBPriorP}},
+    Z::Vector{Int}, ζ::Matrix{Int}, λ_indx::Tuple, R::Int, M::Int, K::Int)
+
+  ## initialize
+  lQ_mats = [ Matrix{Float64}(K, K^m) for m in 1:M ]
+  lQ_out = [ reshape(lQ_mats[m], (fill(K, m+1)...)) for m in 1:M ]
+
+  N = counttrans_mmtd(S, TT, Z, ζ, λ_indx, R, M, K)
+
+  for m in 1:M
+      ncol = K^m
+      Nmat = reshape(N[m], (K, ncol))
+      for j in 1:ncol
+
+          w_now, z_now, ξ_now, p1_now = BayesInference.rpost_sparseStickBreak(
+          Nmat[:,j], prior[m][j].p1_now,
+          prior[m][j].α, prior[m][j].μ, prior[m][j].M,
+          prior[m][j].a_p1, prior[m][j].b_p1 )
+
+          lQ_mats[m][:,j] = log.(w_now)
+          prior[m][j].p1_now = copy(p1_now)
+
+      end
+      lQ_out[m] = reshape(lQ_mats[m], (fill(K, m+1)...))
+  end
+
+  lQ_out
+end
 
 """
     rpost_Z_mmtd(S, TT, lΛ, ζ, lQ, λ_indx, R, M)
@@ -511,7 +555,7 @@ function rpost_ζ_mtd_marg(S::Vector{Int}, ζ_old::Vector{Int},
   ζ_out
 end
 function rpost_ζ_mtd_marg(S::Vector{Int}, ζ_old::Vector{Int},
-    prior_Q::Vector{SparseSBPrior}, # assumes M=1
+    prior_Q::Union{Vector{SparseSBPrior}, Vector{SparseSBPriorP}}, # assumes M=1
     # α_Q::Float64, p1_Q::Float64, M_Q::Float64, μ_Q::Float64,
     lλ::Vector{Float64},
     TT::Int, R::Int, K::Int)
@@ -529,8 +573,14 @@ function rpost_ζ_mtd_marg(S::Vector{Int}, ζ_old::Vector{Int},
     kuse = unique(Slagrev_now)
     nkuse = length(kuse)
 
-    lSDMmarg0 = [ logSBMmarginal(N0[:,kk], prior_Q[kk].p1, prior_Q[kk].α, prior_Q[kk].μ, prior_Q[kk].M) for kk in kuse ]
-    lSDMmarg1 = [ logSBMmarginal(N0[:,kk] + eSt, prior_Q[kk].p1, prior_Q[kk].α, prior_Q[kk].μ, prior_Q[kk].M) for kk in kuse ]
+    if typeof(prior_Q) == Vector{SparseSBPrior}
+        p1_now = [ prior_Q[kk].p1 for kk in kuse]
+    elseif typeof(prior_Q) == Vector{SparseSBPriorP}
+        p1_now = [ prior_Q[kk].p1_now for kk in kuse]
+    end
+
+    lSDMmarg0 = [ logSBMmarginal(N0[:,kuse[kk]], p1_now[kk], prior_Q[kuse[kk]].α, prior_Q[kuse[kk]].μ, prior_Q[kuse[kk]].M) for kk in 1:nkuse ]
+    lSDMmarg1 = [ logSBMmarginal(N0[:,kuse[kk]] + eSt, p1_now[kk], prior_Q[kuse[kk]].α, prior_Q[kuse[kk]].μ, prior_Q[kuse[kk]].M) for kk in 1:nkuse ]
 
     lw = zeros(Float64, R)
 
@@ -567,7 +617,7 @@ end
 """
 function MetropIndep_λζ(S::Vector{Int}, lλ_old::Vector{Float64}, ζ_old::Vector{Int},
     prior_λ::SparseDirMixPrior,
-    prior_Q::Vector{SparseSBPrior},
+    prior_Q::Union{Vector{SparseSBPrior}, Vector{SparseSBPriorP}},
     # α_Q::Float64, p1_Q::Float64, M_Q::Float64, μ_Q::Float64,
     TT::Int, R::Int, K::Int)
 
@@ -578,8 +628,14 @@ function MetropIndep_λζ(S::Vector{Int}, lλ_old::Vector{Float64}, ζ_old::Vect
   N_cand = counttrans_mtd(S, TT, ζ_cand, R, K) # rows are tos, cols are froms
   N_old = counttrans_mtd(S, TT, ζ_old, R, K) # rows are tos, cols are froms
 
-  lSBMmarg_cand = [ logSBMmarginal(N_cand[:,kk], prior_Q[kk].p1, prior_Q[kk].α, prior_Q[kk].μ, prior_Q[kk].M) for kk in 1:K ]
-  lSBMmarg_old = [ logSBMmarginal(N_old[:,kk], prior_Q[kk].p1, prior_Q[kk].α, prior_Q[kk].μ, prior_Q[kk].M) for kk in 1:K ]
+  if typeof(prior_Q[1]) == SparseSBPrior
+      p1_now = [ copy( prior_Q[kk].p1 ) for kk in 1:K ]
+  elseif typeof(prior_Q[1]) == SparseSBPriorP
+      p1_now = [ copy( prior_Q[kk].p1_now ) for kk in 1:K ]
+  end
+
+  lSBMmarg_cand = [ logSBMmarginal(N_cand[:,kk], p1_now[kk], prior_Q[kk].α, prior_Q[kk].μ, prior_Q[kk].M) for kk in 1:K ]
+  lSBMmarg_old = [ logSBMmarginal(N_old[:,kk], p1_now[kk], prior_Q[kk].α, prior_Q[kk].μ, prior_Q[kk].M) for kk in 1:K ]
 
   ll_cand = sum( lSBMmarg_cand )
   ll_old = sum( lSBMmarg_old )
@@ -597,7 +653,7 @@ function MetropIndep_λζ(S::Vector{Int}, lλ_old::Vector{Float64}, ζ_old::Vect
 end
 function MetropIndep_λζ(S::Vector{Int}, lλ_old::Vector{Float64}, ζ_old::Vector{Int},
     prior_λ::Vector{Float64},
-    prior_Q::Vector{SparseSBPrior},
+    prior_Q::Union{Vector{SparseSBPrior}, Vector{SparseSBPriorP}},
     # α_Q::Float64, p1_Q::Float64, M_Q::Float64, μ_Q::Float64,
     TT::Int, R::Int, K::Int)
 
@@ -608,8 +664,14 @@ function MetropIndep_λζ(S::Vector{Int}, lλ_old::Vector{Float64}, ζ_old::Vect
   N_cand = counttrans_mtd(S, TT, ζ_cand, R, K) # rows are tos, cols are froms
   N_old = counttrans_mtd(S, TT, ζ_old, R, K) # rows are tos, cols are froms
 
-  lSBMmarg_cand = [ logSBMmarginal(N_cand[:,kk], prior_Q[kk].p1, prior_Q[kk].α, prior_Q[kk].μ, prior_Q[kk].M) for kk in 1:K ]
-  lSBMmarg_old = [ logSBMmarginal(N_old[:,kk], prior_Q[kk].p1, prior_Q[kk].α, prior_Q[kk].μ, prior_Q[kk].M) for kk in 1:K ]
+  if typeof(prior_Q[1]) == SparseSBPrior
+      p1_now = [ copy( prior_Q[kk].p1 ) for kk in 1:K ]
+  elseif typeof(prior_Q[1]) == SparseSBPriorP
+      p1_now = [ copy( prior_Q[kk].p1_now ) for kk in 1:K ]
+  end
+
+  lSBMmarg_cand = [ logSBMmarginal(N_cand[:,kk], p1_now[kk], prior_Q[kk].α, prior_Q[kk].μ, prior_Q[kk].M) for kk in 1:K ]
+  lSBMmarg_old = [ logSBMmarginal(N_old[:,kk], p1_now[kk], prior_Q[kk].α, prior_Q[kk].μ, prior_Q[kk].M) for kk in 1:K ]
 
   ll_cand = sum( lSBMmarg_cand )
   ll_old = sum( lSBMmarg_old )
@@ -637,11 +699,11 @@ function MetropIndep_λζ(S::Vector{Int}, lλ_old::Vector{Float64}, ζ_old::Vect
   N_cand = counttrans_mtd(S, TT, ζ_cand, R, K) # rows are tos, cols are froms
   N_old = counttrans_mtd(S, TT, ζ_old, R, K) # rows are tos, cols are froms
 
-  lSBMmarg_cand = [ BayesInference.lmvbeta(N_cand[:,kk] .+ prior_Q[:,kk]) for kk in 1:K ] # can ignore denominator
-  lSBMmarg_old = [ BayesInference.lmvbeta(N_old[:,kk] .+ prior_Q[:,kk]) for kk in 1:K ]
+  lDirmarg_cand = [ BayesInference.lmvbeta(N_cand[:,kk] .+ prior_Q[:,kk]) for kk in 1:K ] # can ignore denominator
+  lDirmarg_old = [ BayesInference.lmvbeta(N_old[:,kk] .+ prior_Q[:,kk]) for kk in 1:K ]
 
-  ll_cand = sum( lSBMmarg_cand )
-  ll_old = sum( lSBMmarg_old )
+  ll_cand = sum( lDirmarg_cand )
+  ll_old = sum( lDirmarg_old )
 
   lu = log(rand())
   if lu < (ll_cand - ll_old)
@@ -666,11 +728,11 @@ function MetropIndep_λζ(S::Vector{Int}, lλ_old::Vector{Float64}, ζ_old::Vect
   N_cand = counttrans_mtd(S, TT, ζ_cand, R, K) # rows are tos, cols are froms
   N_old = counttrans_mtd(S, TT, ζ_old, R, K) # rows are tos, cols are froms
 
-  lSBMmarg_cand = [ BayesInference.lmvbeta(N_cand[:,kk] .+ prior_Q[:,kk]) for kk in 1:K ] # can ignore denominator
-  lSBMmarg_old = [ BayesInference.lmvbeta(N_old[:,kk] .+ prior_Q[:,kk]) for kk in 1:K ]
+  lDirmarg_cand = [ BayesInference.lmvbeta(N_cand[:,kk] .+ prior_Q[:,kk]) for kk in 1:K ] # can ignore denominator
+  lDirmarg_old = [ BayesInference.lmvbeta(N_old[:,kk] .+ prior_Q[:,kk]) for kk in 1:K ]
 
-  ll_cand = sum( lSBMmarg_cand )
-  ll_old = sum( lSBMmarg_old )
+  ll_cand = sum( lDirmarg_cand )
+  ll_old = sum( lDirmarg_old )
 
   lu = log(rand())
   if lu < (ll_cand - ll_old)
@@ -686,8 +748,8 @@ end
 
 
 """
-    mcmc_mmtd!(model, n_keep[, save=true, report_filename="out_progress.txt",
-        thin=1, report_freq=500, monitor_indx=[1]])
+mcmc_mmtd!(model, n_keep[, save=true, report_filename="out_progress.txt",
+thin=1, report_freq=500, monitor_indx=[1]])
 """
 function mcmc_mmtd!(model::ModMMTD, n_keep::Int, save::Bool=true,
     report_filename::String="out_progress.txt", thin::Int=1, jmpstart_iter::Int=25,
@@ -701,18 +763,21 @@ function mcmc_mmtd!(model::ModMMTD, n_keep::Int, save::Bool=true,
 
         if save
             monitor_len = length(monitor_indx)
-            sims = PostSimsMMTD( Matrix{Float64}(n_keep, model.M),
-                [ Matrix{Float64}(n_keep, model.λ_indx[2][m]) for m in 1:model.M ],
-                [ Matrix{Float64}(n_keep, model.K^(m+1)) for m in 1:model.M ],
-                Matrix{Int}(n_keep, monitor_len),
-                [ Matrix{Int}(n_keep, monitor_len) for m in 1:model.M ],
-                Matrix{Float64}(n_keep, model.M) )
+            sims = PostSimsMMTD( Matrix{Float64}(n_keep, model.M), # Λ
+            [ Matrix{Float64}(n_keep, model.λ_indx[2][m]) for m in 1:model.M ], # λ
+            [ Matrix{Float64}(n_keep, model.K^(m+1)) for m in 1:model.M ], # Q
+            Matrix{Int}(n_keep, monitor_len), # Z
+            [ Matrix{Int}(n_keep, monitor_len) for m in 1:model.M ], # ζ
+            Matrix{Float64}(n_keep, model.M), # p1λ
+            [ Matrix{Float64}(n_keep, model.K^m) for m in 1:model.M ] #= p1Q =# )
         end
 
         ## flags
         Mbig_flag = model.M > 1
         λSBMp_flag = typeof(model.prior.λ) == Vector{BayesInference.SparseSBPriorP}
         λSBMfull_flag = typeof(model.prior.λ) == Vector{BayesInference.SparseSBPriorFull}
+        QSBMp_flag = typeof(model.prior.Q) == Vector{Vector{BayesInference.SparseSBPriorP}}
+        QSBMfull_flag = typeof(model.prior.Q) == Vector{Vector{BayesInference.SparseSBPriorFull}}
 
 
         ## sampling
@@ -724,47 +789,51 @@ function mcmc_mmtd!(model::ModMMTD, n_keep::Int, save::Bool=true,
                 if Mbig_flag
 
                     model.state.Z = rpost_Z_mmtd(model.S, model.TT,
-                        model.state.lΛ, model.state.ζ, model.state.lQ, model.λ_indx,
-                        model.R, model.M)
+                    model.state.lΛ, model.state.ζ, model.state.lQ, model.λ_indx,
+                    model.R, model.M)
 
                     model.state.lΛ = rpost_lΛ_mmtd(model.prior.Λ, model.state.Z, model.M)
 
                     model.state.ζ = rpost_ζ_mmtd(model.S, model.TT,
-                        model.state.lλ, model.state.Z, model.state.lQ,
-                        model.λ_indx, model.R, model.M, model.K)
+                    model.state.lλ, model.state.Z, model.state.lQ,
+                    model.λ_indx, model.R, model.M, model.K)
 
                 else
 
                     if jmpstart
 
                         model.state.lλ[1], model.state.ζ[:,1] = MetropIndep_λζ(model.S,
-                            model.state.lλ[1], model.state.ζ[:,1], model.prior.λ[1],
-                            model.prior.Q[1],
-                            model.TT, model.R, model.K)
+                        model.state.lλ[1], model.state.ζ[:,1], model.prior.λ[1],
+                        model.prior.Q[1],
+                        model.TT, model.R, model.K)
 
                     else
 
                         model.state.ζ[:,1] = rpost_ζ_mtd_marg(model.S, model.state.ζ[:,1],
-                            model.prior.Q[1], model.state.lλ[1],
-                            model.TT, model.R, model.K)
+                        model.prior.Q[1], model.state.lλ[1],
+                        model.TT, model.R, model.K)
 
                         if λSBMp_flag || λSBMfull_flag
                             model.state.lλ = rpost_lλ_mmtd!(model.prior.λ, model.state.ζ,
-                                model.λ_indx[2], model.M)
+                            model.λ_indx[2], model.M)
                         else
                             model.state.lλ = rpost_lλ_mmtd(model.prior.λ, model.state.ζ,
-                                model.λ_indx[2], model.M)
+                            model.λ_indx[2], model.M)
                         end
-
 
                     end
 
                 end
 
-                model.state.lQ = rpost_lQ_mmtd(model.S, model.TT, model.prior.Q,
+                if QSBMp_flag || QSBMfull_flag
+                    model.state.lQ = rpost_lQ_mmtd!(model.S, model.TT, model.prior.Q,
                     model.state.Z, model.state.ζ, model.λ_indx,
                     model.R, model.M, model.K)
-
+                else
+                    model.state.lQ = rpost_lQ_mmtd(model.S, model.TT, model.prior.Q,
+                    model.state.Z, model.state.ζ, model.λ_indx,
+                    model.R, model.M, model.K)
+                end
 
                 model.iter += 1
                 if model.iter % report_freq == 0
@@ -780,7 +849,12 @@ function mcmc_mmtd!(model::ModMMTD, n_keep::Int, save::Bool=true,
                     @inbounds sims.Q[m][i,:] = exp.( vec( model.state.lQ[m] ) )
                     @inbounds sims.ζ[m][i,:] = copy(model.state.ζ[monitor_indx,m])
                     if λSBMp_flag || λSBMfull_flag
-                        sims.p1[i,m] = copy(model.prior.λ[m].p1_now)
+                        sims.p1λ[i,m] = copy(model.prior.λ[m].p1_now)
+                    end
+                    if QSBMp_flag || QSBMfull_flag
+                        for kk in 1:model.K^m
+                            sims.p1Q[m][i,kk] = copy( model.prior_Q[m][kk].p1_now )
+                        end
                     end
                 end
             end

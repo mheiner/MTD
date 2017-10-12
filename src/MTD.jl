@@ -11,5 +11,6 @@ using BayesInference
 
 include("general.jl")
 include("mmtd.jl")
+include("gof.jl")
 
 end # module
