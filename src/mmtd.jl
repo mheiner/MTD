@@ -43,7 +43,7 @@ type ModMMTD
   ModMMTD(R, M, K, TT, S, prior, state, λ_indx) = new(R, M, K, TT, S, prior, state, λ_indx, UInt64(0))
 end
 
-### Keep around for compatibility with old simulations
+## Keep around for compatibility with old simulations
 # type PostSimsMMTD
 #   Λ::Matrix{Float64}
 #   λ::Array{Matrix{Float64}}
@@ -65,9 +65,9 @@ type PostSimsMMTD
   p1λ::Matrix{Float64} # SBM π
   p1Q::Vector{Matrix{Float64}} # SBM π
 
-  PostSimsMMTD(Λ, λ, Q, Z, ζ) = new(Λ, λ, Q, Z, ζ, nothing, nothing)
-  PostSimsMMTD(Λ, λ, Q, Z, ζ, p1λ) = new(Λ, λ, Q, Z, ζ, p1λ, nothing)
-  PostSimsMMTD(Λ, λ, Q, Z, ζ, p1Q) = new(Λ, λ, Q, Z, ζ, nothing, p1Q)
+  # PostSimsMMTD(Λ, λ, Q, Z, ζ) = new(Λ, λ, Q, Z, ζ, nothing, nothing)
+  # PostSimsMMTD(Λ, λ, Q, Z, ζ, p1λ) = new(Λ, λ, Q, Z, ζ, p1λ, nothing)
+  # PostSimsMMTD(Λ, λ, Q, Z, ζ, p1Q) = new(Λ, λ, Q, Z, ζ, nothing, p1Q)
   PostSimsMMTD(Λ, λ, Q, Z, ζ, p1λ, p1Q) = new(Λ, λ, Q, Z, ζ, p1λ, p1Q)
 end
 
