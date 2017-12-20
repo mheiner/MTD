@@ -27,6 +27,8 @@ function meanForecLoss_MTD(S::Vector{Int}, tprime::Vector{Int},
     negllMat = zeros(Float64, nsim, nprime)
     sqErrMat = zeros(Float64, nsim, nprime)
 
+    forecMat = zeros(Float64, nsim, nprime, K)
+
     for i in 1:nsim
         for j in 1:nprime
             ii = copy( simind[i] )
@@ -42,7 +44,9 @@ function meanForecLoss_MTD(S::Vector{Int}, tprime::Vector{Int},
             missClassMat[i,j] = lossMissedClass(S_now, forec)
             negllMat[i,j] = -log(forec[S_now])
             sqErrMat[i,j] = lossSqErr(Float64(S_now), forec)
+
+            forecMat[i,j,:] = copy(forec)
         end
     end
-    (lossMat, missClassMat, negllMat, sqErrMat)
+    (lossMat, missClassMat, negllMat, sqErrMat, forecMat)
 end

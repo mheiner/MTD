@@ -1,14 +1,17 @@
 # mmtd.jl
 
-export ParamsMMTD, PriorMMTD, ModMMTD, λindxMMTD,
-  build_λ_indx, ZζtoZandζ, sim_mmtd, symmetricDirPrior_mmtd, transTensor_mmtd,
+### assumes sparsProbVec.jl function rpost_sparseStickBreak() output NOT on log scale
+
+export ParamsMMTD, PriorMMTD, ModMMTD,
+  build_λ_indx, sim_mmtd, symmetricDirPrior_mmtd, transTensor_mmtd,
   rpost_lΛ_mmtd, rpost_lλ_mmtd, counttrans_mmtd, rpost_lQ_mmtd,
   rpost_Z_mmtd, rpost_ζ_mmtd, rpost_ζ_mtd_marg, MetropIndep_λζ, mcmc_mmtd!; # remove the inner functions after testing
 
 type ParamsMMTD
   lΛ::Vector{Float64}
   lλ::Vector{Vector{Float64}}
-  Zζ::Vector{Int} # will be length TT - R, mapped through ZζtoZandζ()
+  Z::Vector{Int} # will be length TT - R
+  ζ::Matrix{Int} # (TT-R) by M: these are single indexes of the ordered λ sets
   lQ::Vector{Array{Float64}} # organized so first index is now and lag 1 is the next index
 end
 
@@ -16,6 +19,16 @@ type PriorMMTD
   Λ::Union{Vector{Float64}, SparseDirMixPrior, SparseSBPrior, SparseSBPriorFull}
   λ::Union{Vector{Vector{Float64}}, Vector{SparseDirMixPrior}, Vector{SparseSBPrior}, Vector{SparseSBPriorP}, Vector{SparseSBPriorFull}}
   Q::Union{Vector{Matrix{Float64}}, Vector{Vector{SparseDirMixPrior}}, Vector{Vector{SparseSBPrior}}, Vector{Vector{SparseSBPriorP}}}
+  # α0_Q::Vector{Matrix{Float64}} # organized in matricized form
+  # β_Q::Vector{Float64}
+  # p1_Q::Vector{Float64}
+  # α_Q::Vector{Float64}
+  # μ_Q::Vector{Float64}
+  # M_Q::Vector{Float64}
+
+  # PriorMMTD(Λ, λ, α0_Q) = new(Λ, λ, α0_Q, ones(Float64, length(Λ)), 0.0, 0.0, 0.0, 0.0) # default to Dirichlet priors on Q
+  # PriorMMTD(Λ, λ, α0_Q, β_Q) = new(Λ, λ, α0_Q, β_Q, 0.0, 0.0, 0.0, 0.0)
+  # PriorMMTD(Λ, λ, α0_Q, β_Q, p1_Q, α_Q, μ_Q, M_Q) = new(Λ, λ, α0_Q, β_Q, p1_Q, α_Q, μ_Q, M_Q)
 end
 
 type ModMMTD
@@ -26,29 +39,41 @@ type ModMMTD
   S::Vector{Int}
   prior::PriorMMTD
   state::ParamsMMTD
-  λ_indx::λindxMMTD
+  λ_indx::Tuple
   iter::UInt64
 
   ModMMTD(R, M, K, TT, S, prior, state, λ_indx) = new(R, M, K, TT, S, prior, state, λ_indx, UInt64(0))
 end
 
+## Keep around for compatibility with old simulations
+# type PostSimsMMTD
+#   Λ::Matrix{Float64}
+#   λ::Array{Matrix{Float64}}
+#   Q::Array{Matrix{Float64}}
+#   Z::Matrix{Int}
+#   ζ::Array{Matrix{Int}}
+#   p1::Matrix{Float64}
+#
+#   PostSimsMMTD(Λ, λ, Q, Z, ζ) = new(Λ, λ, Q, Z, ζ, nothing)
+#   PostSimsMMTD(Λ, λ, Q, Z, ζ, p1) = new(Λ, λ, Q, Z, ζ, p1)
+# end
+
 type PostSimsMMTD
   Λ::Matrix{Float64}
   λ::Array{Matrix{Float64}}
   Q::Array{Matrix{Float64}}
-  Zζ::Array{Int} # index 1 is iteration, index 2 is time, index 3 is Z and ζ
+  Z::Matrix{Int}
+  ζ::Array{Matrix{Int}}
   p1λ::Matrix{Float64} # SBM π
   p1Q::Vector{Matrix{Float64}} # SBM π
 
+  # PostSimsMMTD(Λ, λ, Q, Z, ζ) = new(Λ, λ, Q, Z, ζ, nothing, nothing)
+  # PostSimsMMTD(Λ, λ, Q, Z, ζ, p1λ) = new(Λ, λ, Q, Z, ζ, p1λ, nothing)
+  # PostSimsMMTD(Λ, λ, Q, Z, ζ, p1Q) = new(Λ, λ, Q, Z, ζ, nothing, p1Q)
   PostSimsMMTD(Λ, λ, Q, Z, ζ, p1λ, p1Q) = new(Λ, λ, Q, Z, ζ, p1λ, p1Q)
 end
 
-type λindxMMTD
-    indxs::Vector{Array{Array{Int64,1},1}}
-    lens::Vector{Int64}
-    Zζindx::Matrix{Int64}
-    nZζ::Int64
-end
+
 
 """
     build_λ_indx(R, M)
@@ -61,22 +86,14 @@ end
 function build_λ_indx(R::Int, M::Int)
   indxs = [ collect(Combinatorics.combinations(1:R, m)) for m in 1:M ]
   lens = [ length(xx) for xx in indxs ]
-  ζindx = vcat([collect(1:zz) for zz in lens]...)
-  Zindx = vcat([fill(m, lens[m]) for m in 1:M]...)
-  nZζ = sum(lens)
-  Zζindx = hcat(Zindx, ζindx)
-  λindxMMTD(indxs, lens, Zζindx, nZζ)
-end
-
-function ZζtoZandζ(Zζ::Vector{Int64}, λ_indx)
-    out = [λ_indx.Zζindx[Zζ[tt],j] for tt in 1:length(Zζ), j in 1:2]
+  (indxs, lens)
 end
 
 
 """
     sim_mmtd(TT, nburn, R, M, K, λ_indx, Λ, λ, Q)
 """
-function sim_mmtd(TT::Int, nburn::Int, R::Int, M::Int, K::Int, λ_indx::λindxMMTD,
+function sim_mmtd(TT::Int, nburn::Int, R::Int, M::Int, K::Int, λ_indx::Tuple,
   Λ::Array{Float64}, λ::Array{Vector{Float64}}, Q#=::Array{Array{Float64}}=#)
 
   Nsim = nburn + TT
@@ -90,7 +107,7 @@ function sim_mmtd(TT::Int, nburn::Int, R::Int, M::Int, K::Int, λ_indx::λindxMM
   for tt in (R+1):(Nsim)
     i = tt - R
     Slagrev_now = S[range(tt-1, -1, R)]
-    pvec = copy( Q[Z[i]][:, Slagrev_now[λ_indx.indxs[Z[i]][ζ[i,Z[i]]]]...] )
+    pvec = copy( Q[Z[i]][:, Slagrev_now[λ_indx[1][Z[i]][ζ[i,Z[i]]]]...] )
     S[tt] = StatsBase.sample(Weights( pvec ))
   end
 
@@ -102,12 +119,12 @@ end
     symmetricPrior_mmtd(size_Λ, size_λ, size_Q, R, M, K, λ_indx)
 """
 function symmetricDirPrior_mmtd(size_Λ::Float64, size_λ::Float64, size_Q::Float64,
-  R::Int, M::Int, K::Int, λ_indx::λindxMMTD)
+  R::Int, M::Int, K::Int, λ_indx::Tuple)
 
-  # λ_indx.lens contains a tuple of lengths of λ vectors
+  # λ_indx[2] contains a tuple of lengths of λ vectors
 
   α0_Λ = fill( size_Λ / float(M), M)
-  α0_λ = [ fill( size_λ / float(λ_indx.lens[m]), λ_indx.lens[m] ) for m in 1:M ]
+  α0_λ = [ fill( size_λ / float(λ_indx[2][m]), λ_indx[2][m] ) for m in 1:M ]
   a0_Q = size_Q / float(K)
   α0_Q = [ fill( a0_Q, (K, K^(m)) ) for m in 1:M ]
 
@@ -120,7 +137,7 @@ end
 
 Calculate full transition tensor from Λ, λ, and Q.
 """
-function transTensor_mmtd(R::Int, M::Int, K::Int, λ_indx::λindxMMTD,
+function transTensor_mmtd(R::Int, M::Int, K::Int, λ_indx::Tuple,
   Λ::Vector{Float64}, λ::Vector{Vector{Float64}}, Q#=::Vector{Array{Float64}}=#)
 
   froms, nfroms = create_froms(K, R) # in this case, ordered by now, lag1, lag2, etc.
@@ -128,8 +145,8 @@ function transTensor_mmtd(R::Int, M::Int, K::Int, λ_indx::λindxMMTD,
   for i in 1:nfroms
     for k in 1:K
       for m in 1:M
-        for ℓ in 1:λ_indx.lens[m]
-            Ωmat[k,i] += Λ[m] .* λ[m][ℓ] .* Q[m][k,froms[i][[λ_indx.indxs[m][ℓ]]...]...]
+        for ℓ in 1:λ_indx[2][m]
+            Ωmat[k,i] += Λ[m] .* λ[m][ℓ] .* Q[m][k,froms[i][[λ_indx[1][m][ℓ]]...]...]
         end
       end
     end
@@ -165,48 +182,39 @@ end
 """
     rpost_lλ_mmtd(α0_λ, ζ, λ_lens, M)
 """
-function rpost_lλ_mmtd(α0_λ::Vector{Vector{Float64}}, Zandζ::Matrix{Int},
+function rpost_lλ_mmtd(α0_λ::Vector{Vector{Float64}}, ζ::Matrix{Int},
   λ_lens::Vector{Int}, M::Int)
 
   lλ_out = [ Vector{Float64}(λ_lens[m]) for m in 1:M ]
-  Z = copy(Zandζ[:,1])
-  ζ = copy(Zandζ[:,2])
 
   for m in 1:M
-    Zmindx = find(Z .== m)
-    Nζ = StatsBase.counts(ζ[Zmindx], 1:λ_lens[m])
+    Nζ = StatsBase.counts(ζ[:,m], 1:λ_lens[m])
     α1_λ = α0_λ[m] + Nζ
     lλ_out[m] = BayesInference.rDirichlet(α1_λ, true)
   end
 
   lλ_out
 end
-function rpost_lλ_mmtd(prior::Vector{SparseDirMixPrior}, Zandζ::Matrix{Int},
+function rpost_lλ_mmtd(prior::Vector{SparseDirMixPrior}, ζ::Matrix{Int},
   λ_lens::Vector{Int}, M::Int)
 
   lλ_out = [ Vector{Float64}(λ_lens[m]) for m in 1:M ]
-  Z = copy(Zandζ[:,1])
-  ζ = copy(Zandζ[:,2])
 
   for m in 1:M
-    Zmindx = find(Z .== m)
-    Nζ = StatsBase.counts(ζ[Zmindx], 1:λ_lens[m])
+    Nζ = StatsBase.counts(ζ[:,m], 1:λ_lens[m])
     α1_λ = prior[m].α + Nζ
     lλ_out[m] = BayesInference.rSparseDirMix(α1_λ, prior[m].β, true)
   end
 
   lλ_out
 end
-function rpost_lλ_mmtd(prior::Array{SparseSBPrior}, Zandζ::Matrix{Int},
+function rpost_lλ_mmtd(prior::Array{SparseSBPrior}, ζ::Matrix{Int},
   λ_lens::Vector{Int}, M::Int)
 
   lλ_out = [ Vector{Float64}(λ_lens[m]) for m in 1:M ]
-  Z = copy(Zandζ[:,1])
-  ζ = copy(Zandζ[:,2])
 
   for m in 1:M
-    Zmindx = find(Z .== m)
-    Nζ = StatsBase.counts(ζ[Zmindx], 1:λ_lens[m])
+    Nζ = StatsBase.counts(ζ[:,m], 1:λ_lens[m])
     w_now, z_now, ξ_now = BayesInference.rpost_sparseStickBreak(Nζ,
         prior[m].p1, prior[m].α,
         prior[m].μ, prior[m].M )
@@ -216,16 +224,13 @@ function rpost_lλ_mmtd(prior::Array{SparseSBPrior}, Zandζ::Matrix{Int},
 
   lλ_out
 end
-function rpost_lλ_mmtd!(prior::Array{SparseSBPriorP}, Zandζ::Matrix{Int},
+function rpost_lλ_mmtd!(prior::Array{SparseSBPriorP}, ζ::Matrix{Int},
   λ_lens::Vector{Int}, M::Int)
 
   lλ_out = [ Vector{Float64}(λ_lens[m]) for m in 1:M ]
-  Z = copy(Zandζ[:,1])
-  ζ = copy(Zandζ[:,2])
 
   for m in 1:M
-    Zmindx = find(Z .== m)
-    Nζ = StatsBase.counts(ζ[Zmindx], 1:λ_lens[m])
+    Nζ = StatsBase.counts(ζ[:,m], 1:λ_lens[m])
     w_now, z_now, ξ_now, prior[m].p1_now = BayesInference.rpost_sparseStickBreak(Nζ,
         prior[m].p1_now, prior[m].α, prior[m].μ, prior[m].M,
         prior[m].a_p1, prior[m].b_p1)
@@ -235,16 +240,13 @@ function rpost_lλ_mmtd!(prior::Array{SparseSBPriorP}, Zandζ::Matrix{Int},
 
   lλ_out
 end
-function rpost_lλ_mmtd!(prior::Array{SparseSBPriorFull}, Zandζ::Matrix{Int},
+function rpost_lλ_mmtd!(prior::Array{SparseSBPriorFull}, ζ::Matrix{Int},
   λ_lens::Vector{Int}, M::Int)
 
   lλ_out = [ Vector{Float64}(λ_lens[m]) for m in 1:M ]
-  Z = copy(Zandζ[:,1])
-  ζ = copy(Zandζ[:,2])
 
   for m in 1:M
-    Zmindx = find(Z .== m)
-    Nζ = StatsBase.counts(ζ[Zmindx], 1:λ_lens[m])
+    Nζ = StatsBase.counts(ζ[:,m], 1:λ_lens[m])
     w_now, z_now, ξ_now, prior[m].μ_now, prior[m].p1_now = BayesInference.rpost_sparseStickBreak(Nζ,
         prior[m].p1_now, prior[m].α, prior[m].μ_now, prior[m].M,
         prior[m].a_p1, prior[m].b_p1, prior[m].a_μ, prior[m].b_μ)
@@ -255,30 +257,11 @@ function rpost_lλ_mmtd!(prior::Array{SparseSBPriorFull}, Zandζ::Matrix{Int},
   lλ_out
 end
 
-
 """
-    counttrans_mmtd(S, TT, Zandζ, λ_indx, R, M, K)
-
-    Indexing on ouput is [t, t-1, t-2, etc.]
-
-    ### Example
-    ```julia
-    R = 2
-    M = 2
-    K = 3
-    TT = 12
-    S = [1,2,1,3,3,1,2,1,3,2,1,1]
-    Zandζ = [1,2; 1,2;, 1;2, 1,1; 2,1; 1;2, 2,1; 2,1; 2,1; 1,1]
-    λ_indx = build_λ_indx(R, M)
-    counttrans_mmtd(S::Vector{Int}, TT::Int, Zandζ::Matrix{Int},
-        λ_indx::λindxMMTD, R::Int, M::Int, K::Int)
-    ```
+    counttrans_mmtd(S, TT, Z, ζ, λ_indx, R, M, K)
 """
-function counttrans_mmtd(S::Vector{Int}, TT::Int, Zandζ::Matrix{Int},
-  λ_indx::λindxMMTD, R::Int, M::Int, K::Int)
-
-  Z = copy(Zandζ[:,1])
-  ζ = copy(Zandζ[:,2])
+function counttrans_mmtd(S::Vector{Int}, TT::Int, Z::Vector{Int}, ζ::Matrix{Int},
+  λ_indx::Tuple, R::Int, M::Int, K::Int)
 
   ## initialize
   N_out = [ zeros(Int, (fill(K, m+1)...)) for m in 1:M ]
@@ -287,7 +270,7 @@ function counttrans_mmtd(S::Vector{Int}, TT::Int, Zandζ::Matrix{Int},
   for tt in (R+1):(TT)
     Z_now = Z[tt-R]
     Slagrev_now = S[range(tt-1, -1, R)]
-    N_out[Z_now][append!( [copy(S[tt])], copy(Slagrev_now[ λ_indx.indxs[Z_now][ζ[tt-R]] ]) )...] += 1
+    N_out[Z_now][append!( [copy(S[tt])], copy(Slagrev_now[ λ_indx[1][Z_now][ζ[tt-R,Z_now]] ]) )...] += 1
   end
 
   N_out
@@ -323,25 +306,24 @@ function counttrans_mtd(S::Vector{Int}, TT::Int, ζ::Vector{Int},
   N_out
 end
 
-
 """
     rpost_lQ_mmtd(S, TT, prior, Z, ζ, λ_indx, R, M, K)
 """
 function rpost_lQ_mmtd(S::Vector{Int}, TT::Int, prior::Vector{Matrix{Float64}},
-  Zandζ::Matrix{Int},
-  λ_indx::λindxMMTD, R::Int, M::Int, K::Int)
+  Z::Vector{Int}, ζ::Matrix{Int},
+  λ_indx::Tuple, R::Int, M::Int, K::Int)
 
   ## initialize
   α0_Q = copy(prior)
   lQ_mats = [ Matrix{Float64}(K, K^m) for m in 1:M ]
   lQ_out = [ reshape(lQ_mats[m], (fill(K, m+1)...)) for m in 1:M ]
 
-  N = counttrans_mmtd(S, TT, Zandζ, λ_indx, R, M, K)
+  N = counttrans_mmtd(S, TT, Z, ζ, λ_indx, R, M, K)
 
   for m in 1:M
     ncol = K^m
     Nmat = reshape(N[m], (K, ncol))
-    α1_Q = α0_Q[m] .+ Nmat
+    α1_Q = α0_Q[m] + Nmat
     for j in 1:ncol
       lQ_mats[m][:,j] = BayesInference.rDirichlet(α1_Q[:,j], true)
     end
@@ -352,14 +334,14 @@ function rpost_lQ_mmtd(S::Vector{Int}, TT::Int, prior::Vector{Matrix{Float64}},
 end
 function rpost_lQ_mmtd(S::Vector{Int}, TT::Int,
   prior::Vector{Vector{SparseDirMixPrior}},
-  Zandζ::Matrix{Int},
-  λ_indx::λindxMMTD, R::Int, M::Int, K::Int)
+  Z::Vector{Int}, ζ::Matrix{Int},
+  λ_indx::Tuple, R::Int, M::Int, K::Int)
 
   ## initialize
   lQ_mats = [ Matrix{Float64}(K, K^m) for m in 1:M ]
   lQ_out = [ reshape(lQ_mats[m], (fill(K, m+1)...)) for m in 1:M ]
 
-  N = counttrans_mmtd(S, TT, Zandζ, λ_indx, R, M, K)
+  N = counttrans_mmtd(S, TT, Z, ζ, λ_indx, R, M, K)
 
   for m in 1:M
     ncol = K^m
@@ -376,13 +358,13 @@ end
 function rpost_lQ_mmtd(S::Vector{Int}, TT::Int, prior::Vector{Vector{SparseSBPrior}},
     # α_Q::Vector{Float64},
     # p1_Q::Vector{Float64}, M_Q::Vector{Float64}, μ_Q::Vector{Float64},
-    Zandζ::Matrix{Int}, λ_indx::λindxMMTD, R::Int, M::Int, K::Int)
+    Z::Vector{Int}, ζ::Matrix{Int}, λ_indx::Tuple, R::Int, M::Int, K::Int)
 
   ## initialize
   lQ_mats = [ Matrix{Float64}(K, K^m) for m in 1:M ]
   lQ_out = [ reshape(lQ_mats[m], (fill(K, m+1)...)) for m in 1:M ]
 
-  N = counttrans_mmtd(S, TT, Zandζ, λ_indx, R, M, K)
+  N = counttrans_mmtd(S, TT, Z, ζ, λ_indx, R, M, K)
 
   for m in 1:M
     ncol = K^m
@@ -397,13 +379,13 @@ function rpost_lQ_mmtd(S::Vector{Int}, TT::Int, prior::Vector{Vector{SparseSBPri
   lQ_out
 end
 function rpost_lQ_mmtd!(S::Vector{Int}, TT::Int, prior::Vector{Vector{SparseSBPriorP}},
-    Zandζ::Matrix{Int}, λ_indx::λindxMMTD, R::Int, M::Int, K::Int)
+    Z::Vector{Int}, ζ::Matrix{Int}, λ_indx::Tuple, R::Int, M::Int, K::Int)
 
   ## initialize
   lQ_mats = [ Matrix{Float64}(K, K^m) for m in 1:M ]
   lQ_out = [ reshape(lQ_mats[m], (fill(K, m+1)...)) for m in 1:M ]
 
-  N = counttrans_mmtd(S, TT, Zandζ, λ_indx, R, M, K)
+  N = counttrans_mmtd(S, TT, Z, ζ, λ_indx, R, M, K)
 
   for m in 1:M
       ncol = K^m
@@ -425,49 +407,84 @@ function rpost_lQ_mmtd!(S::Vector{Int}, TT::Int, prior::Vector{Vector{SparseSBPr
   lQ_out
 end
 
+"""
+    rpost_Z_mmtd(S, TT, lΛ, ζ, lQ, λ_indx, R, M)
+"""
+function rpost_Z_mmtd(S::Vector{Int}, TT::Int,
+  lΛ::Vector{Float64}, ζ::Matrix{Int}, lQ::Vector{Array{Float64}},
+  λ_indx::Tuple, R::Int, M::Int)
+
+  Z_out = Vector{Float64}(TT-R)
+  lw = Vector{Float64}(M)
+
+  for i in 1:(TT-R)
+    tt = i + R
+    Slagrev_now = S[range(tt-1, -1, R)]
+    for m in 1:M
+      lw[m] = lΛ[m] + lQ[m][ append!([copy(S[tt])], copy( Slagrev_now[λ_indx[1][m][ ζ[i,m] ]] ))... ]
+    end
+    Z_out[i] = StatsBase.sample(Weights( exp(lw) ))
+  end
+
+  Z_out
+end
+
 
 """
-    rpost_Zζ_marg(S::Vector{Int}, Zζ_old::Vector{Int}, λ_indx::λindxMMTD,
-        prior_Q::Vector{Matrix{Float64}},
-        lΛ::Vector{Float64},
-        lλ::Vector{Vector{Float64}},
-        TT::Int, R::Int, K::Int)
-
-    Full conditinal updates for Zζ marginalizing over Q
+    rpost_ζ_mmtd(S, TT, lλ, Z, lQ, λ_indx, R, M, K)
 """
-function rpost_Zζ_mmtd_marg(S::Vector{Int}, Zζ_old::Vector{Int}, λ_indx::λindxMMTD,
-    prior_Q::Vector{Matrix{Float64}},
-    lΛ::Vector{Float64},
-    lλ::Vector{Vector{Float64}},
-    TT::Int, R::Int, M::Int, K::Int)
+function rpost_ζ_mmtd(S::Vector{Int}, TT::Int,
+  lλ::Vector{Vector{Float64}}, Z::Vector{Int}, lQ::Vector{Array{Float64}},
+  λ_indx::Tuple, R::Int, M::Int, K::Int)
+
+  λ_lens = copy(λ_indx[2])
+  ζ_out = Matrix{Int}(TT-R,M)
+
+  for i in 1:(TT-R)
+    tt = i + R
+    Slagrev_now = S[range(tt-1, -1, R)]
+    for m in 1:M
+      if Z[i] == m
+        lp = Vector{Float64}(λ_lens[m])
+        for j in 1:λ_lens[m]
+          lp[j] = lλ[m][j] + lQ[m][ append!([copy(S[tt])], copy(Slagrev_now[λ_indx[1][m][j]]))... ]
+        end
+        ζ_out[i,m] = StatsBase.sample(Weights( exp(lp) ))
+      else
+        ζ_out[i,m] = StatsBase.sample(Weights( exp(lλ[m]) ))
+      end
+    end
+  end
+
+  ζ_out
+end
+
+
+"""
+    rpost_ζ_mtd_marg(S, ζ_old, lλ, prior_Q, TT, R, K)
+
+    Full conditinal updates for ζ marginalizing over Q (currently only implemented for M=1)
+"""
+function rpost_ζ_mtd_marg(S::Vector{Int}, ζ_old::Vector{Int},
+    prior_Q::Matrix{Float64},
+    # α0_Q::Matrix{Float64},
+    lλ::Vector{Float64},
+    TT::Int, R::Int, K::Int)
 
   α0_Q = copy(prior_Q)
-  α0_Qarrays = [ reshape(α0_Q[m], (fill(K, m+1)...)) for m in 1:M ]
+  ζ_out = copy(ζ_old)
+  N_now = counttrans_mtd(S, TT, ζ_old, R, K) # rows are tos, cols are froms
 
-  Zζ_out = copy(Zζ_old)
-  Zandζ_out = ZζtoZandζ(Zζ_out, λ_indx)
-
-  N_now = counttrans_mmtd(S, TT, Zandζ_out, λ_indx, R, M, K) # vector of arrays, indices in reverse time
-
-  for i in 1:(TT-R)  # i indexes Zζ, tt indexes S
+  for i in 1:(TT-R)  # i indexes ζ, tt indexes S
     tt = i + R
     Slagrev_now = S[range(tt-1, -1, R)]
     N0 = copy(N_now)
-    Zold, ζold = copy(Zandζ_out[i,1]), copy(Zandζ_out[i,2])
-    N0[Zold][ append!(S[tt], Slagrev_now[ λ_indx.indxs[Zold][ζold] ])... ] -= 1
-    α1_Qarrays = α0_Qarrays .+ N0
+    N0[ S[tt], Slagrev_now[ ζ_out[i] ] ] -= 1
+    α1_Q = α0_Q .+ N0
+    eSt = [1.0*(ii==S[tt]) for ii in 1:K]
 
-    # eSt = [1.0*(ii==S[tt]) for ii in 1:K]
-
-    kuse = collect(1:λ_indx.nZζ) # right now just go over all possibilities
+    kuse = unique(Slagrev_now)
     nkuse = length(kuse)
-
-    lmvbn0 = zeros(nkuse)
-    lmvbn1 = zeros(nkuse)
-
-    for kk in kuse
-
-    end
 
     lmvbn0 = [ lmvbeta( α1_Q[:,kk] ) for kk in kuse ]
     lmvbn1 = [ lmvbeta( α1_Q[:,kk] + eSt ) for kk in kuse ]
@@ -749,7 +766,7 @@ function mcmc_mmtd!(model::ModMMTD, n_keep::Int, save::Bool=true,
         if save
             monitor_len = length(monitor_indx)
             sims = PostSimsMMTD( Matrix{Float64}(n_keep, model.M), # Λ
-            [ Matrix{Float64}(n_keep, model.λ_indx.lens[m]) for m in 1:model.M ], # λ
+            [ Matrix{Float64}(n_keep, model.λ_indx[2][m]) for m in 1:model.M ], # λ
             [ Matrix{Float64}(n_keep, model.K^(m+1)) for m in 1:model.M ], # Q
             Matrix{Int}(n_keep, monitor_len), # Z
             [ Matrix{Int}(n_keep, monitor_len) for m in 1:model.M ], # ζ
@@ -800,10 +817,10 @@ function mcmc_mmtd!(model::ModMMTD, n_keep::Int, save::Bool=true,
 
                         if λSBMp_flag || λSBMfull_flag
                             model.state.lλ = rpost_lλ_mmtd!(model.prior.λ, model.state.ζ,
-                            model.λ_indx.lens, model.M)
+                            model.λ_indx[2], model.M)
                         else
                             model.state.lλ = rpost_lλ_mmtd(model.prior.λ, model.state.ζ,
-                            model.λ_indx.lens, model.M)
+                            model.λ_indx[2], model.M)
                         end
 
                     end
