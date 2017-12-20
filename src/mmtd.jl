@@ -441,58 +441,62 @@ function rpost_Zζ_mmtd_marg(S::Vector{Int}, Zζ_old::Vector{Int}, λ_indx::λin
     lλ::Vector{Vector{Float64}},
     TT::Int, R::Int, M::Int, K::Int)
 
-  α0_Q = copy(prior_Q)
+  α0_Q = copy(prior_Q) # vector of matrices
   α0_Qarrays = [ reshape(α0_Q[m], (fill(K, m+1)...)) for m in 1:M ]
 
   Zζ_out = copy(Zζ_old)
-  Zandζ_out = ZζtoZandζ(Zζ_out, λ_indx)
+  Zandζ_now = ZζtoZandζ(Zζ_out, λ_indx) # won't get updated
 
-  N_now = counttrans_mmtd(S, TT, Zandζ_out, λ_indx, R, M, K) # vector of arrays, indices in reverse time
+  ## calculate current log marginal likelihood
+  N_now = counttrans_mmtd(S, TT, Zandζ_now, λ_indx, R, M, K) # vector of arrays, indices in reverse time
+  # N_now_mats = [ reshape(N_now[m], K, K^m) for m in 1:M ]
+  α1_Qarrays = α0_Qarrays .+ N_now
+  # α1_Q = α0_Q .+ N_now_mats
+  α1_Q = [ reshape(α1_Qarrays[m], K, K^m) for m in 1:M ]
+  # α1_Qarrays = [ reshape(α1_Q[m], (fill(K, m+1)...)) for m in 1:M ]
 
+  llikmarg = 0.0
+  for m in 1:M
+      for kk in 1:(K^m)
+          llikmarg += lmvbeta( α1_Q[m][:,kk] )
+      end
+  end
+
+  ## for each time point, modify llikmarg accordingly
   for i in 1:(TT-R)  # i indexes Zζ, tt indexes S
     tt = i + R
     Slagrev_now = S[range(tt-1, -1, R)]
-    N0 = copy(N_now)
-    Zold, ζold = copy(Zandζ_out[i,1]), copy(Zandζ_out[i,2])
-    N0[Zold][ append!(S[tt], Slagrev_now[ λ_indx.indxs[Zold][ζold] ])... ] -= 1
-    α1_Qarrays = α0_Qarrays .+ N0
 
-    # eSt = [1.0*(ii==S[tt]) for ii in 1:K]
+    # Zold, ζold = copy(Zandζ_out[i,1]), copy(Zandζ_out[i,2])
+    Zold, ζold = copy(λ_indx.Zζindx[Zζ_out[i],1]), copy(λ_indx.Zζindx[Zζ_out[i],2])
+    eSt = [ 1.0 * (kk==S[tt]) for kk in 1:K ]
 
-    kuse = collect(1:λ_indx.nZζ) # right now just go over all possibilities
-    nkuse = length(kuse)
+    # remove S_t from llikmarg
+    llikmarg -= lmvbeta( α1_Qarrays[Zold][:,Slagrev_now[ λ_indx.indxs[Zold][ζold] ]...] )
+    llikmarg += lmvbeta( α1_Qarrays[Zold][:,Slagrev_now[ λ_indx.indxs[Zold][ζold] ]...] .- eSt )
 
-    lmvbn0 = zeros(nkuse)
-    lmvbn1 = zeros(nkuse)
+    # calculate llikmarg and update probability under each possible Zζ
+    llikmarg_cand = fill(llikmarg, λ_indx.nZζ)
+    lw = zeros(Float64, λ_indx.nZζ)
 
-    for kk in kuse
+    for ℓ in 1:λ_indx.nZζ
+        Zcand, ζcand = copy(λ_indx.Zζindx[ℓ,1]), copy(λ_indx.Zζindx[ℓ,2])
 
-    end
+        llikmarg_cand[ℓ] -= lmvbeta( α1_Qarrays[Zcand][:,Slagrev_now[ λ_indx.indxs[Zcand][ζcand] ]...] )
+        llikmarg_cand[ℓ] += lmvbeta( α1_Qarrays[Zcand][:,Slagrev_now[ λ_indx.indxs[Zcand][ζcand] ]...] .+ eSt )
 
-    lmvbn0 = [ lmvbeta( α1_Q[:,kk] ) for kk in kuse ]
-    lmvbn1 = [ lmvbeta( α1_Q[:,kk] + eSt ) for kk in kuse ]
-
-    lw = zeros(Float64, R)
-
-    for ℓ in 1:R
-        lw[ℓ] = copy(lλ[ℓ])
-        for kk in 1:nkuse
-            if Slagrev_now[ℓ] == kuse[kk]
-                lw[ℓ] += lmvbn1[kk]
-            else
-                lw[ℓ] += lmvbn0[kk]
-            end
-        end
+        lw[ℓ] = llikmarg_cand[ℓ] + lΛ[Zcand] + lλ[Zcand][ζcand]
     end
 
     w = exp.( lw - maximum(lw) )
-    ζ_out[i] = StatsBase.sample(Weights( w ))
-    N_now = copy(N0)
-    N_now[ S[tt], Slagrev_now[ ζ_out[i] ] ] += 1
+    Zζ_out[i] = StatsBase.sample(Weights( w ))
+
+    ## update running llikmarg
+    llikmarg = copy(llikmarg_cand[Zζ_out[i]])
 
   end
 
-  ζ_out
+  Zζ_out
 end
 function rpost_ζ_mtd_marg(S::Vector{Int}, ζ_old::Vector{Int},
     prior_Q::Vector{SparseDirMixPrior}, # assumes M=1
