@@ -15,7 +15,7 @@ end
 type PriorMMTD
   Λ::Union{Vector{Float64}, SparseDirMixPrior, SparseSBPrior, SparseSBPriorFull}
   λ::Union{Vector{Vector{Float64}}, Vector{SparseDirMixPrior}, Vector{SparseSBPrior}, Vector{SparseSBPriorP}, Vector{SparseSBPriorFull}}
-  Q::Union{Vector{Matrix{Float64}}, Vector{Vector{SparseDirMixPrior}}, Vector{Vector{SparseSBPrior}}, Vector{Vector{SparseSBPriorP}}}
+  Q::Union{Vector{Matrix{Float64}}, Vector{Array{SparseDirMixPrior}}, Vector{Array{SparseSBPrior}}, Vector{Array{SparseSBPriorP}}}
 end
 
 type ModMMTD
@@ -351,9 +351,11 @@ function rpost_lQ_mmtd(S::Vector{Int}, TT::Int, prior::Vector{Matrix{Float64}},
   lQ_out
 end
 function rpost_lQ_mmtd(S::Vector{Int}, TT::Int,
-  prior::Vector{Vector{SparseDirMixPrior}},
+  prior::Vector{Array{SparseDirMixPrior}},
   Zandζ::Matrix{Int},
   λ_indx::λindxMMTD, R::Int, M::Int, K::Int)
+
+  prior_vec = [ reshape(prior[m], K^m ) for m in 1:M ]
 
   ## initialize
   lQ_mats = [ Matrix{Float64}(K, K^m) for m in 1:M ]
@@ -365,18 +367,20 @@ function rpost_lQ_mmtd(S::Vector{Int}, TT::Int,
     ncol = K^m
     Nmat = reshape(N[m], (K, ncol))
     for j in 1:ncol
-      α1 = prior[m][j].α .+ Nmat[:,j]
-      lQ_mats[m][:,j] = BayesInference.rSparseDirMix(α1, prior[m][j].β, true)
+      α1 = prior_vec[m][j].α .+ Nmat[:,j]
+      lQ_mats[m][:,j] = BayesInference.rSparseDirMix(α1, prior_vec[m][j].β, true)
     end
     lQ_out[m] = reshape(lQ_mats[m], (fill(K, m+1)...))
   end
 
   lQ_out
 end
-function rpost_lQ_mmtd(S::Vector{Int}, TT::Int, prior::Vector{Vector{SparseSBPrior}},
+function rpost_lQ_mmtd(S::Vector{Int}, TT::Int, prior::Vector{Array{SparseSBPrior}},
     # α_Q::Vector{Float64},
     # p1_Q::Vector{Float64}, M_Q::Vector{Float64}, μ_Q::Vector{Float64},
     Zandζ::Matrix{Int}, λ_indx::λindxMMTD, R::Int, M::Int, K::Int)
+
+  prior_vec = [ reshape(prior[m], K^m ) for m in 1:M ]
 
   ## initialize
   lQ_mats = [ Matrix{Float64}(K, K^m) for m in 1:M ]
@@ -389,15 +393,17 @@ function rpost_lQ_mmtd(S::Vector{Int}, TT::Int, prior::Vector{Vector{SparseSBPri
     Nmat = reshape(N[m], (K, ncol))
     for j in 1:ncol
       lQ_mats[m][:,j] = log.( BayesInference.rpost_sparseStickBreak(Nmat[:,j],
-      prior[m][j].p1, prior[m][j].α, prior[m][j].μ, prior[m][j].M)[1] )
+      prior_vec[m][j].p1, prior_vec[m][j].α, prior_vec[m][j].μ, prior_vec[m][j].M)[1] )
     end
     lQ_out[m] = reshape(lQ_mats[m], (fill(K, m+1)...))
   end
 
   lQ_out
 end
-function rpost_lQ_mmtd!(S::Vector{Int}, TT::Int, prior::Vector{Vector{SparseSBPriorP}},
+function rpost_lQ_mmtd!(S::Vector{Int}, TT::Int, prior::Vector{Array{SparseSBPriorP}},
     Zandζ::Matrix{Int}, λ_indx::λindxMMTD, R::Int, M::Int, K::Int)
+
+  prior_vec = [ reshape(prior[m], K^m ) for m in 1:M ]
 
   ## initialize
   lQ_mats = [ Matrix{Float64}(K, K^m) for m in 1:M ]
@@ -411,16 +417,18 @@ function rpost_lQ_mmtd!(S::Vector{Int}, TT::Int, prior::Vector{Vector{SparseSBPr
       for j in 1:ncol
 
           w_now, z_now, ξ_now, p1_now = BayesInference.rpost_sparseStickBreak(
-          Nmat[:,j], prior[m][j].p1_now,
-          prior[m][j].α, prior[m][j].μ, prior[m][j].M,
-          prior[m][j].a_p1, prior[m][j].b_p1 )
+          Nmat[:,j], prior_vec[m][j].p1_now,
+          prior_vec[m][j].α, prior_vec[m][j].μ, prior_vec[m][j].M,
+          prior_vec[m][j].a_p1, prior_vec[m][j].b_p1 )
 
           lQ_mats[m][:,j] = log.(w_now)
-          prior[m][j].p1_now = copy(p1_now)
+          prior_vec[m][j].p1_now = copy(p1_now)
 
       end
       lQ_out[m] = reshape(lQ_mats[m], (fill(K, m+1)...))
   end
+
+  prior = [ reshape(prior_vec[m], (fill(K,m))... ) for m in 1:M ]
 
   lQ_out
 end
@@ -435,7 +443,7 @@ end
 
     Full conditinal updates for Zζ marginalizing over Q
 """
-function rpost_Zζ_mmtd_marg(S::Vector{Int}, Zζ_old::Vector{Int}, λ_indx::λindxMMTD,
+function rpost_Zζ_marg(S::Vector{Int}, Zζ_old::Vector{Int}, λ_indx::λindxMMTD,
     prior_Q::Vector{Matrix{Float64}},
     lΛ::Vector{Float64},
     lλ::Vector{Vector{Float64}},
@@ -450,9 +458,9 @@ function rpost_Zζ_mmtd_marg(S::Vector{Int}, Zζ_old::Vector{Int}, λ_indx::λin
   ## calculate current log marginal likelihood
   N_now = counttrans_mmtd(S, TT, Zandζ_now, λ_indx, R, M, K) # vector of arrays, indices in reverse time
   # N_now_mats = [ reshape(N_now[m], K, K^m) for m in 1:M ]
-  α1_Qarrays = α0_Qarrays .+ N_now
+  α1_Qarrays = α0_Qarrays .+ N_now # gets re-used and updated
   # α1_Q = α0_Q .+ N_now_mats
-  α1_Q = [ reshape(α1_Qarrays[m], K, K^m) for m in 1:M ]
+  α1_Q = [ reshape(α1_Qarrays[m], K, K^m) for m in 1:M ] # used only for initial calculation
   # α1_Qarrays = [ reshape(α1_Q[m], (fill(K, m+1)...)) for m in 1:M ]
 
   llikmarg = 0.0
@@ -472,8 +480,10 @@ function rpost_Zζ_mmtd_marg(S::Vector{Int}, Zζ_old::Vector{Int}, λ_indx::λin
     eSt = [ 1.0 * (kk==S[tt]) for kk in 1:K ]
 
     # remove S_t from llikmarg
-    llikmarg -= lmvbeta( α1_Qarrays[Zold][:,Slagrev_now[ λ_indx.indxs[Zold][ζold] ]...] )
-    llikmarg += lmvbeta( α1_Qarrays[Zold][:,Slagrev_now[ λ_indx.indxs[Zold][ζold] ]...] .- eSt )
+    SlagrevZζnow = copy(Slagrev_now[ λ_indx.indxs[Zold][ζold] ])
+    llikmarg -= lmvbeta( α1_Qarrays[Zold][:,SlagrevZζnow...] )
+    α1_Qarrays[Zold][:,SlagrevZζnow...] -= eSt
+    llikmarg += lmvbeta( α1_Qarrays[Zold][:,SlagrevZζnow...] )
 
     # calculate llikmarg and update probability under each possible Zζ
     llikmarg_cand = fill(llikmarg, λ_indx.nZζ)
@@ -481,117 +491,221 @@ function rpost_Zζ_mmtd_marg(S::Vector{Int}, Zζ_old::Vector{Int}, λ_indx::λin
 
     for ℓ in 1:λ_indx.nZζ
         Zcand, ζcand = copy(λ_indx.Zζindx[ℓ,1]), copy(λ_indx.Zζindx[ℓ,2])
+        SlagrevZζnow = copy(Slagrev_now[ λ_indx.indxs[Zcand][ζcand] ])
 
-        llikmarg_cand[ℓ] -= lmvbeta( α1_Qarrays[Zcand][:,Slagrev_now[ λ_indx.indxs[Zcand][ζcand] ]...] )
-        llikmarg_cand[ℓ] += lmvbeta( α1_Qarrays[Zcand][:,Slagrev_now[ λ_indx.indxs[Zcand][ζcand] ]...] .+ eSt )
+        llikmarg_cand[ℓ] -= lmvbeta( α1_Qarrays[Zcand][:,SlagrevZζnow...] )
+        llikmarg_cand[ℓ] += lmvbeta( α1_Qarrays[Zcand][:,SlagrevZζnow...] .+ eSt )
 
         lw[ℓ] = llikmarg_cand[ℓ] + lΛ[Zcand] + lλ[Zcand][ζcand]
     end
 
     w = exp.( lw - maximum(lw) )
-    Zζ_out[i] = StatsBase.sample(Weights( w ))
+    newindx = StatsBase.sample(Weights( w ))
+    Zζ_out[i] = copy(newindx)
 
-    ## update running llikmarg
-    llikmarg = copy(llikmarg_cand[Zζ_out[i]])
+    ## update running quantities
+    Znew, ζnew = copy(λ_indx.Zζindx[newindx,1]), copy(λ_indx.Zζindx[newindx,2])
+    α1_Qarrays[Znew][:,Slagrev_now[ λ_indx.indxs[Znew][ζnew] ]...] += eSt
+    llikmarg = copy(llikmarg_cand[newindx])
 
   end
 
   Zζ_out
 end
-function rpost_ζ_mtd_marg(S::Vector{Int}, ζ_old::Vector{Int},
-    prior_Q::Vector{SparseDirMixPrior}, # assumes M=1
-    # α0_Q::Matrix{Float64}, β_Q::Float64,
+function rpost_Zζ_marg(S::Vector{Int}, Zζ_old::Vector{Int},
+    λ_indx::λindxMMTD,
+    prior_Q::Vector{Array{SparseDirMixPrior}},
+    lΛ::Vector{Float64},
     lλ::Vector{Float64},
-    TT::Int, R::Int, K::Int)
+    TT::Int, R::Int, M::Int, K::Int)
 
-  ζ_out = copy(ζ_old)
-  N_now = counttrans_mtd(S, TT, ζ_old, R, K) # rows are tos, cols are froms
+  Zζ_out = copy(Zζ_old)
+  Zandζ_now = ZζtoZandζ(Zζ_out, λ_indx) # won't get updated
+  prior_Q_vec = [ reshape(prior_Q, (K^m)) for m in 1:M ]
 
+  ## calculate current log marginal likelihood
+  N_now = counttrans_mmtd(S, TT, Zandζ_now, λ_indx, R, M, K) # vector of arrays, indices in reverse time
+  N_now_mats = [ reshape(N_now[m], K, K^m) for m in 1:M ] # Ns won't be updated, only llikmarg
+
+  llikmarg = 0.0
+  for m in 1:M
+      for ℓ in 1:(K^m)
+          llikmarg += logSDMmarginal(N_now_mats[m][:,ℓ], prior_Q_vec[m][ℓ].α, prior_Q_vec[m][ℓ].β)
+      end
+  end
+
+  ## for each time point, modify llikmarg accordingly
   for i in 1:(TT-R)  # i indexes ζ, tt indexes S
     tt = i + R
     Slagrev_now = S[range(tt-1, -1, R)]
-    N0 = copy(N_now)
-    N0[ S[tt], Slagrev_now[ ζ_out[i] ] ] -= 1
-    # α1_Q = α0_Q + N0
-    eSt = [1*(ii==S[tt]) for ii in 1:K]
 
-    kuse = unique(Slagrev_now)
-    nkuse = length(kuse)
+    Zold, ζold = copy(λ_indx.Zζindx[Zζ_out[i],1]), copy(λ_indx.Zζindx[Zζ_out[i],2])
+    eSt = [ 1*(kk==S[tt]) for kk in 1:K ]
 
-    lSDMmarg0 = [ logSDMmarginal(N0[:,kk], prior_Q[kk].α, prior_Q[kk].β) for kk in kuse ]
-    lSDMmarg1 = [ logSDMmarginal(N0[:,kk] + eSt, prior_Q[kk].α, prior_Q[kk].β) for kk in kuse ]
+    # remove S_t from llikmarg
+    SlagrevZζnow = copy(Slagrev_now[ λ_indx.indxs[Zold][ζold] ])
+    llikmarg -= logSDMmarginal( N_now[Zold][:,SlagrevZζnow...],
+                                prior_Q[Zold][SlagrevZζnow...].α,
+                                prior_Q[Zold][SlagrevZζnow...].β )
+            # prior for Q indexed with Slagrev_now[ λ_indx.indxs[Zold][ζold] ]...
+    N_now[Zold][:,SlagrevZζnow...] -= eSt
+    llikmarg += logSDMmarginal( N_now[Zold][:,SlagrevZζnow...],
+                                prior_Q[Zold][SlagrevZζnow...].α,
+                                prior_Q[Zold][SlagrevZζnow...].β )
 
-    lw = zeros(Float64, R)
+    # calculate llikmarg and update probability under each possible Zζ
+    llikmarg_cand = fill(llikmarg, λ_indx.nZζ)
+    lw = zeros(Float64, λ_indx.nZζ)
 
-    for ℓ in 1:R
-        lw[ℓ] = copy(lλ[ℓ])
-        for kk in 1:nkuse
-            if Slagrev_now[ℓ] == kuse[kk]
-                lw[ℓ] += lSDMmarg1[kk]
-            else
-                lw[ℓ] += lSDMmarg0[kk]
-            end
-        end
+    for ℓ in 1:λ_indx.nZζ
+        Zcand, ζcand = copy(λ_indx.Zζindx[ℓ,1]), copy(λ_indx.Zζindx[ℓ,2])
+        SlagrevZζnow = copy(Slagrev_now[ λ_indx.indxs[Zcand][ζcand] ])
+
+        llikmarg_cand[ℓ] -= logSDMmarginal( N_now[Zcand][:,SlagrevZζnow...],
+                                    prior_Q[Zcand][SlagrevZζnow].α,
+                                    prior_Q[Zcand][SlagrevZζnow].β )
+        llikmarg_cand[ℓ] += logSDMmarginal( N_now[Zcand][:,SlagrevZζnow...] .+ eSt,
+                                    prior_Q[Zcand][SlagrevZζnow].α,
+                                    prior_Q[Zcand][SlagrevZζnow].β )
+
+        lw[ℓ] = llikmarg_cand[ℓ] + lΛ[Zcand] + lλ[Zcand][ζcand]
     end
 
     w = exp.( lw - maximum(lw) )
-    ζ_out[i] = StatsBase.sample(Weights( w ))
-    N_now = copy(N0)
-    N_now[ S[tt], Slagrev_now[ ζ_out[i] ] ] += 1
+    newindx = StatsBase.sample(Weights( w ))
+    Zζ_out[i] = copy(newindx)
+
+    ## update running llikmarg
+    Znew, ζnew = copy(λ_indx.Zζindx[newindx,1]), copy(λ_indx.Zζindx[newindx,2])
+    N_now[Znew][:,Slagrev_now[ λ_indx.indxs[Znew][ζnew] ]...] += eSt
+    llikmarg = copy(llikmarg_cand[newindx])
 
   end
 
-  ζ_out
+  Zζ_out
 end
-function rpost_ζ_mtd_marg(S::Vector{Int}, ζ_old::Vector{Int},
-    prior_Q::Union{Vector{SparseSBPrior}, Vector{SparseSBPriorP}}, # assumes M=1
-    # α_Q::Float64, p1_Q::Float64, M_Q::Float64, μ_Q::Float64,
+function rpost_Zζ_marg(S::Vector{Int}, Zζ_old::Vector{Int},
+    λ_indx::λindxMMTD,
+    prior_Q::Union{Vector{Array{SparseSBPrior}}, Vector{Array{SparseSBPriorP}}},
+    lΛ::Vector{Float64},
     lλ::Vector{Float64},
-    TT::Int, R::Int, K::Int)
+    TT::Int, R::Int, M::Int, K::Int)
 
-  ζ_out = copy(ζ_old)
-  N_now = counttrans_mtd(S, TT, ζ_old, R, K) # rows are tos, cols are froms
+  Zζ_out = copy(Zζ_old)
+  Zandζ_now = ZζtoZandζ(Zζ_out, λ_indx) # won't get updated
+  prior_Q_vec = [ reshape(prior_Q, (K^m)) for m in 1:M ]
 
-  for i in 1:(TT-R)  # i indexes ζ, tt indexes S
-    tt = i + R
-    Slagrev_now = S[range(tt-1, -1, R)]
-    N0 = copy(N_now)
-    N0[ S[tt], Slagrev_now[ ζ_out[i] ] ] -= 1
-    eSt = [1*(ii==S[tt]) for ii in 1:K]
+  SBM_flag = typeof(prior_Q) == Vector{Array{SparseSBPrior}}
+  SBMp_flag = typeof(prior_Q) == Vector{Array{SparseSBPriorP}}}
 
-    kuse = unique(Slagrev_now)
-    nkuse = length(kuse)
+  ## calculate current log marginal likelihood
+  N_now = counttrans_mmtd(S, TT, Zandζ_now, λ_indx, R, M, K) # vector of arrays, indices in reverse time
+  N_now_mats = [ reshape(N_now[m], K, K^m) for m in 1:M ] # Ns won't be updated, only llikmarg
 
-    if typeof(prior_Q) == Vector{SparseSBPrior}
-        p1_now = [ prior_Q[kk].p1 for kk in kuse]
-    elseif typeof(prior_Q) == Vector{SparseSBPriorP}
-        p1_now = [ prior_Q[kk].p1_now for kk in kuse]
-    end
-
-    lSDMmarg0 = [ logSBMmarginal(N0[:,kuse[kk]], p1_now[kk], prior_Q[kuse[kk]].α, prior_Q[kuse[kk]].μ, prior_Q[kuse[kk]].M) for kk in 1:nkuse ]
-    lSDMmarg1 = [ logSBMmarginal(N0[:,kuse[kk]] + eSt, p1_now[kk], prior_Q[kuse[kk]].α, prior_Q[kuse[kk]].μ, prior_Q[kuse[kk]].M) for kk in 1:nkuse ]
-
-    lw = zeros(Float64, R)
-
-    for ℓ in 1:R
-        lw[ℓ] = copy(lλ[ℓ])
-        for kk in 1:nkuse
-            if Slagrev_now[ℓ] == kuse[kk]
-                lw[ℓ] += lSDMmarg1[kk]
-            else
-                lw[ℓ] += lSDMmarg0[kk]
-            end
-        end
-    end
-
-    w = exp.( lw - maximum(lw) )
-    ζ_out[i] = StatsBase.sample(Weights( w ))
-    N_now = copy(N0)
-    N_now[ S[tt], Slagrev_now[ ζ_out[i] ] ] += 1
-
+  llikmarg = 0.0
+  for m in 1:M
+      for ℓ in 1:(K^m)
+          if SBM_flag
+              llikmarg += logSBMmarginal( N_now_mats[m][:,ℓ],
+                                          prior_Q_vec[m][ℓ].p1,
+                                          prior_Q_vec[m][ℓ].α,
+                                          prior_Q_vec[m][ℓ].μ,
+                                          prior_Q_vec[m][ℓ].M )
+          elseif SBMp_flag
+              llikmarg += logSBMmarginal( N_now_mats[m][:,ℓ],
+                                          prior_Q_vec[m][ℓ].p1_now,
+                                          prior_Q_vec[m][ℓ].α,
+                                          prior_Q_vec[m][ℓ].μ,
+                                          prior_Q_vec[m][ℓ].M )
+          end
+      end
   end
 
-  ζ_out
+  for i in 1:(TT-R)  # i indexes ζ, tt indexes S
+      tt = i + R
+      Slagrev_now = S[range(tt-1, -1, R)]
+
+      Zold, ζold = copy(λ_indx.Zζindx[Zζ_out[i],1]), copy(λ_indx.Zζindx[Zζ_out[i],2])
+      eSt = [ 1*(kk==S[tt]) for kk in 1:K ]
+
+      # remove S_t from llikmarg
+      SlagrevZζnow = copy(Slagrev_now[ λ_indx.indxs[Zold][ζold] ])
+
+      if SBM_flag
+          llikmarg -= logSBMmarginal( N_now[Zold][:,SlagrevZζnow...],
+                                      prior_Q[Zold][SlagrevZζnow...].p1,
+                                      prior_Q[Zold][SlagrevZζnow...].α,
+                                      prior_Q[Zold][SlagrevZζnow...].μ,
+                                      prior_Q[Zold][SlagrevZζnow...].M  )
+          # prior for Q indexed with Slagrev_now[ λ_indx.indxs[Zold][ζold] ]...
+          N_now[Zold][:,SlagrevZζnow...] -= eSt
+          llikmarg += logSBMmarginal( N_now[Zold][:,SlagrevZζnow...],
+                                      prior_Q[Zold][SlagrevZζnow...].p1,
+                                      prior_Q[Zold][SlagrevZζnow...].α,
+                                      prior_Q[Zold][SlagrevZζnow...].μ,
+                                      prior_Q[Zold][SlagrevZζnow...].M  )
+      elseif SBMp_flag
+          llikmarg -= logSBMmarginal( N_now[Zold][:,SlagrevZζnow...],
+                                      prior_Q[Zold][SlagrevZζnow...].p1_now,
+                                      prior_Q[Zold][SlagrevZζnow...].α,
+                                      prior_Q[Zold][SlagrevZζnow...].μ,
+                                      prior_Q[Zold][SlagrevZζnow...].M  )
+                  # prior for Q indexed with Slagrev_now[ λ_indx.indxs[Zold][ζold] ]...
+          N_now[Zold][:,SlagrevZζnow...] -= eSt
+          llikmarg += logSBMmarginal( N_now[Zold][:,SlagrevZζnow...],
+                                      prior_Q[Zold][SlagrevZζnow...].p1_now,
+                                      prior_Q[Zold][SlagrevZζnow...].α,
+                                      prior_Q[Zold][SlagrevZζnow...].μ,
+                                      prior_Q[Zold][SlagrevZζnow...].M  )
+      end
+
+      # calculate llikmarg and update probability under each possible Zζ
+      llikmarg_cand = fill(llikmarg, λ_indx.nZζ)
+      lw = zeros(Float64, λ_indx.nZζ)
+
+      for ℓ in 1:λ_indx.nZζ
+          Zcand, ζcand = copy(λ_indx.Zζindx[ℓ,1]), copy(λ_indx.Zζindx[ℓ,2])
+          SlagrevZζnow = copy(Slagrev_now[ λ_indx.indxs[Zcand][ζcand] ])
+
+          if SBM_flag
+              llikmarg_cand[ℓ] -= logSBMmarginal( N_now[Zold][:,SlagrevZζnow...],
+                                              prior_Q[Zold][SlagrevZζnow...].p1,
+                                              prior_Q[Zold][SlagrevZζnow...].α,
+                                              prior_Q[Zold][SlagrevZζnow...].μ,
+                                              prior_Q[Zold][SlagrevZζnow...].M  )
+              llikmarg_cand[ℓ] += logSBMmarginal( N_now[Zcand][:,SlagrevZζnow...] .+ eSt,
+                                              prior_Q[Zold][SlagrevZζnow...].p1,
+                                              prior_Q[Zold][SlagrevZζnow...].α,
+                                              prior_Q[Zold][SlagrevZζnow...].μ,
+                                              prior_Q[Zold][SlagrevZζnow...].M  )
+          elseif SBMp_flag
+              llikmarg_cand[ℓ] -= logSBMmarginal( N_now[Zold][:,SlagrevZζnow...],
+                                              prior_Q[Zold][SlagrevZζnow...].p1_now,
+                                              prior_Q[Zold][SlagrevZζnow...].α,
+                                              prior_Q[Zold][SlagrevZζnow...].μ,
+                                              prior_Q[Zold][SlagrevZζnow...].M  )
+              llikmarg_cand[ℓ] += logSBMmarginal( N_now[Zcand][:,SlagrevZζnow...] .+ eSt,
+                                              prior_Q[Zold][SlagrevZζnow...].p1_now,
+                                              prior_Q[Zold][SlagrevZζnow...].α,
+                                              prior_Q[Zold][SlagrevZζnow...].μ,
+                                              prior_Q[Zold][SlagrevZζnow...].M  )
+          end
+
+          lw[ℓ] = llikmarg_cand[ℓ] + lΛ[Zcand] + lλ[Zcand][ζcand]
+      end
+
+      w = exp.( lw - maximum(lw) )
+      newindx = StatsBase.sample(Weights( w ))
+      Zζ_out[i] = copy(newindx)
+
+      ## update running llikmarg
+      Znew, ζnew = copy(λ_indx.Zζindx[newindx,1]), copy(λ_indx.Zζindx[newindx,2])
+      N_now[Znew][:,Slagrev_now[ λ_indx.indxs[Znew][ζnew] ]...] += eSt
+      llikmarg = copy(llikmarg_cand[newindx])
+
+    end
+
+  Zζ_out
 end
 
 
