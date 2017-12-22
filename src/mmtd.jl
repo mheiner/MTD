@@ -15,7 +15,7 @@ end
 type PriorMMTD
   Λ::Union{Vector{Float64}, SparseDirMixPrior, SparseSBPrior, SparseSBPriorFull}
   λ::Union{Vector{Vector{Float64}}, Vector{SparseDirMixPrior}, Vector{SparseSBPrior}, Vector{SparseSBPriorP}, Vector{SparseSBPriorFull}}
-  Q::Union{Vector{Matrix{Float64}}, Vector{Array{SparseDirMixPrior}}, Vector{Array{SparseSBPrior}}, Vector{Array{SparseSBPriorP}}}
+  Q::Union{Vector{Array{Float64}}, Vector{Array{SparseDirMixPrior}}, Vector{Array{SparseSBPrior}}, Vector{Array{SparseSBPriorP}}}
 end
 
 type λindxMMTD
@@ -42,8 +42,8 @@ end
 type PostSimsMMTD
   Λ::Matrix{Float64}
   λ::Array{Matrix{Float64}}
-  Q::Array{Matrix{Float64}}
-  Zζ::Matrix{Int} # index 1 is iteration, index 2 is time, index 3 is Z and ζ
+  Q::Array{Matrix{Float64}} # stored matricized
+  Zζ::Matrix{Int} # index 1 is iteration, index 2 is time, entries are Zζ
   p1λ::Matrix{Float64} # SBM π
   p1Q::Vector{Matrix{Float64}} # SBM π
 
@@ -156,11 +156,11 @@ end
 function rpost_lΛ_mmtd!(prior::SparseSBPriorFull,
     Z::Vector{Int}, M::Int)
 
-  w_now, z_now, ξ_now, prior.μ_now, prior.p1_now = BayesInference.rpost_sparseStickBreak(Z,
+  lw_now, lz_now, ξ_now, prior.μ_now, prior.p1_now = BayesInference.rpost_sparseStickBreak(Z,
     prior.p1_now, prior.α, prior.μ_now, prior.M, prior.a_p1,
-    prior.b_p1, prior.a_μ, prior.b_μ)
+    prior.b_p1, prior.a_μ, prior.b_μ, true)
 
-  log(w_now)
+  lw_now
 end
 
 """
@@ -176,7 +176,7 @@ function rpost_lλ_mmtd(α0_λ::Vector{Vector{Float64}}, Zandζ::Matrix{Int},
   for m in 1:M
     Zmindx = find(Z .== m)
     Nζ = StatsBase.counts(ζ[Zmindx], 1:λ_lens[m])
-    α1_λ = α0_λ[m] + Nζ
+    α1_λ = α0_λ[m] .+ Nζ
     lλ_out[m] = BayesInference.rDirichlet(α1_λ, true)
   end
 
@@ -192,13 +192,13 @@ function rpost_lλ_mmtd(prior::Vector{SparseDirMixPrior}, Zandζ::Matrix{Int},
   for m in 1:M
     Zmindx = find(Z .== m)
     Nζ = StatsBase.counts(ζ[Zmindx], 1:λ_lens[m])
-    α1_λ = prior[m].α + Nζ
+    α1_λ = prior[m].α .+ Nζ
     lλ_out[m] = BayesInference.rSparseDirMix(α1_λ, prior[m].β, true)
   end
 
   lλ_out
 end
-function rpost_lλ_mmtd(prior::Array{SparseSBPrior}, Zandζ::Matrix{Int},
+function rpost_lλ_mmtd(prior::Vector{SparseSBPrior}, Zandζ::Matrix{Int},
   λ_lens::Vector{Int}, M::Int)
 
   lλ_out = [ Vector{Float64}(λ_lens[m]) for m in 1:M ]
@@ -208,16 +208,16 @@ function rpost_lλ_mmtd(prior::Array{SparseSBPrior}, Zandζ::Matrix{Int},
   for m in 1:M
     Zmindx = find(Z .== m)
     Nζ = StatsBase.counts(ζ[Zmindx], 1:λ_lens[m])
-    w_now, z_now, ξ_now = BayesInference.rpost_sparseStickBreak(Nζ,
+    lw_now, lz_now, ξ_now = BayesInference.rpost_sparseStickBreak(Nζ,
         prior[m].p1, prior[m].α,
-        prior[m].μ, prior[m].M )
+        prior[m].μ, prior[m].M, true )
 
-    lλ_out[m] = log( copy(w_now) )
+    lλ_out[m] = copy(lw_now)
   end
 
   lλ_out
 end
-function rpost_lλ_mmtd!(prior::Array{SparseSBPriorP}, Zandζ::Matrix{Int},
+function rpost_lλ_mmtd!(prior::Vector{SparseSBPriorP}, Zandζ::Matrix{Int},
   λ_lens::Vector{Int}, M::Int)
 
   lλ_out = [ Vector{Float64}(λ_lens[m]) for m in 1:M ]
@@ -227,16 +227,16 @@ function rpost_lλ_mmtd!(prior::Array{SparseSBPriorP}, Zandζ::Matrix{Int},
   for m in 1:M
     Zmindx = find(Z .== m)
     Nζ = StatsBase.counts(ζ[Zmindx], 1:λ_lens[m])
-    w_now, z_now, ξ_now, prior[m].p1_now = BayesInference.rpost_sparseStickBreak(Nζ,
+    lw_now, lz_now, ξ_now, prior[m].p1_now = BayesInference.rpost_sparseStickBreak(Nζ,
         prior[m].p1_now, prior[m].α, prior[m].μ, prior[m].M,
-        prior[m].a_p1, prior[m].b_p1)
+        prior[m].a_p1, prior[m].b_p1, true)
 
-    lλ_out[m] = log( copy(w_now) )
+    lλ_out[m] = copy(lw_now)
   end
 
   lλ_out
 end
-function rpost_lλ_mmtd!(prior::Array{SparseSBPriorFull}, Zandζ::Matrix{Int},
+function rpost_lλ_mmtd!(prior::Vector{SparseSBPriorFull}, Zandζ::Matrix{Int},
   λ_lens::Vector{Int}, M::Int)
 
   lλ_out = [ Vector{Float64}(λ_lens[m]) for m in 1:M ]
@@ -246,11 +246,11 @@ function rpost_lλ_mmtd!(prior::Array{SparseSBPriorFull}, Zandζ::Matrix{Int},
   for m in 1:M
     Zmindx = find(Z .== m)
     Nζ = StatsBase.counts(ζ[Zmindx], 1:λ_lens[m])
-    w_now, z_now, ξ_now, prior[m].μ_now, prior[m].p1_now = BayesInference.rpost_sparseStickBreak(Nζ,
+    lw_now, lz_now, ξ_now, prior[m].μ_now, prior[m].p1_now = BayesInference.rpost_sparseStickBreak(Nζ,
         prior[m].p1_now, prior[m].α, prior[m].μ_now, prior[m].M,
-        prior[m].a_p1, prior[m].b_p1, prior[m].a_μ, prior[m].b_μ)
+        prior[m].a_p1, prior[m].b_p1, prior[m].a_μ, prior[m].b_μ, true)
 
-    lλ_out[m] = log( copy(w_now) )
+    lλ_out[m] = copy(lw_now)
   end
 
   lλ_out
@@ -328,23 +328,23 @@ end
 """
     rpost_lQ_mmtd(S, TT, prior, Z, ζ, λ_indx, R, M, K)
 """
-function rpost_lQ_mmtd(S::Vector{Int}, TT::Int, prior::Vector{Matrix{Float64}},
+function rpost_lQ_mmtd(S::Vector{Int}, TT::Int, prior::Vector{Array{Float64}},
   Zandζ::Matrix{Int},
   λ_indx::λindxMMTD, R::Int, M::Int, K::Int)
 
   ## initialize
-  α0_Q = copy(prior)
+  α0_Q = copy(prior) # vector of arrays
   lQ_mats = [ Matrix{Float64}(K, K^m) for m in 1:M ]
   lQ_out = [ reshape(lQ_mats[m], (fill(K, m+1)...)) for m in 1:M ]
 
-  N = counttrans_mmtd(S, TT, Zandζ, λ_indx, R, M, K)
+  N = counttrans_mmtd(S, TT, Zandζ, λ_indx, R, M, K) # vector of arrays
 
   for m in 1:M
     ncol = K^m
-    Nmat = reshape(N[m], (K, ncol))
-    α1_Q = α0_Q[m] .+ Nmat
+    α1_Q = α0_Q[m] .+ N[m]
+    α1_Q_mat = reshape(α1_Q, (K, ncol))
     for j in 1:ncol
-      lQ_mats[m][:,j] = BayesInference.rDirichlet(α1_Q[:,j], true)
+      lQ_mats[m][:,j] = BayesInference.rDirichlet(α1_Q_mat[:,j], true)
     end
     lQ_out[m] = reshape(lQ_mats[m], (fill(K, m+1)...))
   end
@@ -391,8 +391,8 @@ function rpost_lQ_mmtd(S::Vector{Int}, TT::Int, prior::Vector{Array{SparseSBPrio
     ncol = K^m
     Nmat = reshape(N[m], (K, ncol))
     for j in 1:ncol
-      lQ_mats[m][:,j] = log.( BayesInference.rpost_sparseStickBreak(Nmat[:,j],
-      prior_vec[m][j].p1, prior_vec[m][j].α, prior_vec[m][j].μ, prior_vec[m][j].M)[1] )
+      lQ_mats[m][:,j] = BayesInference.rpost_sparseStickBreak(Nmat[:,j],
+        prior_vec[m][j].p1, prior_vec[m][j].α, prior_vec[m][j].μ, prior_vec[m][j].M, true)[1]
     end
     lQ_out[m] = reshape(lQ_mats[m], (fill(K, m+1)...))
   end
@@ -415,12 +415,12 @@ function rpost_lQ_mmtd!(S::Vector{Int}, TT::Int, prior::Vector{Array{SparseSBPri
       Nmat = reshape(N[m], (K, ncol))
       for j in 1:ncol
 
-          w_now, z_now, ξ_now, p1_now = BayesInference.rpost_sparseStickBreak(
-          Nmat[:,j], prior_vec[m][j].p1_now,
-          prior_vec[m][j].α, prior_vec[m][j].μ, prior_vec[m][j].M,
-          prior_vec[m][j].a_p1, prior_vec[m][j].b_p1 )
+          lw_now, lz_now, ξ_now, p1_now = BayesInference.rpost_sparseStickBreak(
+            Nmat[:,j], prior_vec[m][j].p1_now,
+            prior_vec[m][j].α, prior_vec[m][j].μ, prior_vec[m][j].M,
+            prior_vec[m][j].a_p1, prior_vec[m][j].b_p1, true )
 
-          lQ_mats[m][:,j] = log.(w_now)
+          lQ_mats[m][:,j] = copy(lw_now)
           prior_vec[m][j].p1_now = copy(p1_now)
 
       end
@@ -568,7 +568,7 @@ function rpost_Zζ_marg(S::Vector{Int}, Zζ_old::Vector{Int},
     newindx = StatsBase.sample(Weights( w ))
     Zζ_out[i] = copy(newindx)
 
-    ## update running llikmarg
+    ## update running quantities
     Znew, ζnew = copy(λ_indx.Zζindx[newindx,1]), copy(λ_indx.Zζindx[newindx,2])
     N_now[Znew][:,Slagrev_now[ λ_indx.indxs[Znew][ζnew] ]...] += eSt
     llikmarg = copy(llikmarg_cand[newindx])
@@ -596,23 +596,29 @@ function rpost_Zζ_marg(S::Vector{Int}, Zζ_old::Vector{Int},
   N_now_mats = [ reshape(N_now[m], K, K^m) for m in 1:M ] # Ns won't be updated, only llikmarg
 
   llikmarg = 0.0
-  for m in 1:M
-      for ℓ in 1:(K^m)
-          if SBM_flag
-              llikmarg += logSBMmarginal( N_now_mats[m][:,ℓ],
-                                          prior_Q_vec[m][ℓ].p1,
-                                          prior_Q_vec[m][ℓ].α,
-                                          prior_Q_vec[m][ℓ].μ,
-                                          prior_Q_vec[m][ℓ].M )
-          elseif SBMp_flag
-              llikmarg += logSBMmarginal( N_now_mats[m][:,ℓ],
-                                          prior_Q_vec[m][ℓ].p1_now,
-                                          prior_Q_vec[m][ℓ].α,
-                                          prior_Q_vec[m][ℓ].μ,
-                                          prior_Q_vec[m][ℓ].M )
+  if SBM_flag
+      for m in 1:M
+          for ℓ in 1:(K^m)
+            llikmarg += logSBMmarginal( N_now_mats[m][:,ℓ],
+                                        prior_Q_vec[m][ℓ].p1,
+                                        prior_Q_vec[m][ℓ].α,
+                                        prior_Q_vec[m][ℓ].μ,
+                                        prior_Q_vec[m][ℓ].M )
+
+          end
+      end
+    elseif SBMp_flag
+      for m in 1:M
+          for ℓ in 1:(K^m)
+            llikmarg += logSBMmarginal( N_now_mats[m][:,ℓ],
+                                        prior_Q_vec[m][ℓ].p1_now,
+                                        prior_Q_vec[m][ℓ].α,
+                                        prior_Q_vec[m][ℓ].μ,
+                                        prior_Q_vec[m][ℓ].M )
           end
       end
   end
+
 
   for i in 1:(TT-R)  # i indexes ζ, tt indexes S
       tt = i + R
@@ -630,7 +636,7 @@ function rpost_Zζ_marg(S::Vector{Int}, Zζ_old::Vector{Int},
                                       prior_Q[Zold][SlagrevZζnow...].α,
                                       prior_Q[Zold][SlagrevZζnow...].μ,
                                       prior_Q[Zold][SlagrevZζnow...].M  )
-          # prior for Q indexed with Slagrev_now[ λ_indx.indxs[Zold][ζold] ]...
+                    # prior for Q indexed with Slagrev_now[ λ_indx.indxs[Zold][ζold] ]...
           N_now[Zold][:,SlagrevZζnow...] -= eSt
           llikmarg += logSBMmarginal( N_now[Zold][:,SlagrevZζnow...],
                                       prior_Q[Zold][SlagrevZζnow...].p1,
@@ -643,7 +649,7 @@ function rpost_Zζ_marg(S::Vector{Int}, Zζ_old::Vector{Int},
                                       prior_Q[Zold][SlagrevZζnow...].α,
                                       prior_Q[Zold][SlagrevZζnow...].μ,
                                       prior_Q[Zold][SlagrevZζnow...].M  )
-                  # prior for Q indexed with Slagrev_now[ λ_indx.indxs[Zold][ζold] ]...
+                    # prior for Q indexed with Slagrev_now[ λ_indx.indxs[Zold][ζold] ]...
           N_now[Zold][:,SlagrevZζnow...] -= eSt
           llikmarg += logSBMmarginal( N_now[Zold][:,SlagrevZζnow...],
                                       prior_Q[Zold][SlagrevZζnow...].p1_now,
@@ -656,47 +662,53 @@ function rpost_Zζ_marg(S::Vector{Int}, Zζ_old::Vector{Int},
       llikmarg_cand = fill(llikmarg, λ_indx.nZζ)
       lw = zeros(Float64, λ_indx.nZζ)
 
-      for ℓ in 1:λ_indx.nZζ
-          Zcand, ζcand = copy(λ_indx.Zζindx[ℓ,1]), copy(λ_indx.Zζindx[ℓ,2])
-          SlagrevZζnow = copy(Slagrev_now[ λ_indx.indxs[Zcand][ζcand] ])
+      if SBM_flag
+          for ℓ in 1:λ_indx.nZζ
+              Zcand, ζcand = copy(λ_indx.Zζindx[ℓ,1]), copy(λ_indx.Zζindx[ℓ,2])
+              SlagrevZζnow = copy(Slagrev_now[ λ_indx.indxs[Zcand][ζcand] ])
 
-          if SBM_flag
               llikmarg_cand[ℓ] -= logSBMmarginal( N_now[Zcand][:,SlagrevZζnow...],
-                                              prior_Q[Zcand][SlagrevZζnow...].p1,
-                                              prior_Q[Zcand][SlagrevZζnow...].α,
-                                              prior_Q[Zcand][SlagrevZζnow...].μ,
-                                              prior_Q[Zcand][SlagrevZζnow...].M  )
+                                                  prior_Q[Zcand][SlagrevZζnow...].p1,
+                                                  prior_Q[Zcand][SlagrevZζnow...].α,
+                                                  prior_Q[Zcand][SlagrevZζnow...].μ,
+                                                  prior_Q[Zcand][SlagrevZζnow...].M  )
               llikmarg_cand[ℓ] += logSBMmarginal( N_now[Zcand][:,SlagrevZζnow...] .+ eSt,
-                                              prior_Q[Zcand][SlagrevZζnow...].p1,
-                                              prior_Q[Zcand][SlagrevZζnow...].α,
-                                              prior_Q[Zcand][SlagrevZζnow...].μ,
-                                              prior_Q[Zcand][SlagrevZζnow...].M  )
-          elseif SBMp_flag
-              llikmarg_cand[ℓ] -= logSBMmarginal( N_now[Zcand][:,SlagrevZζnow...],
-                                              prior_Q[Zcand][SlagrevZζnow...].p1_now,
-                                              prior_Q[Zcand][SlagrevZζnow...].α,
-                                              prior_Q[Zcand][SlagrevZζnow...].μ,
-                                              prior_Q[Zcand][SlagrevZζnow...].M  )
-              llikmarg_cand[ℓ] += logSBMmarginal( N_now[Zcand][:,SlagrevZζnow...] .+ eSt,
-                                              prior_Q[Zcand][SlagrevZζnow...].p1_now,
-                                              prior_Q[Zcand][SlagrevZζnow...].α,
-                                              prior_Q[Zcand][SlagrevZζnow...].μ,
-                                              prior_Q[Zcand][SlagrevZζnow...].M  )
+                                                  prior_Q[Zcand][SlagrevZζnow...].p1,
+                                                  prior_Q[Zcand][SlagrevZζnow...].α,
+                                                  prior_Q[Zcand][SlagrevZζnow...].μ,
+                                                  prior_Q[Zcand][SlagrevZζnow...].M  )
+
+              lw[ℓ] = llikmarg_cand[ℓ] + lΛ[Zcand] + lλ[Zcand][ζcand]
           end
+        elseif SBMp_flag
+          for ℓ in 1:λ_indx.nZζ
+              Zcand, ζcand = copy(λ_indx.Zζindx[ℓ,1]), copy(λ_indx.Zζindx[ℓ,2])
+              SlagrevZζnow = copy(Slagrev_now[ λ_indx.indxs[Zcand][ζcand] ])
 
-          lw[ℓ] = llikmarg_cand[ℓ] + lΛ[Zcand] + lλ[Zcand][ζcand]
+              llikmarg_cand[ℓ] -= logSBMmarginal( N_now[Zcand][:,SlagrevZζnow...],
+                                                  prior_Q[Zcand][SlagrevZζnow...].p1_now,
+                                                  prior_Q[Zcand][SlagrevZζnow...].α,
+                                                  prior_Q[Zcand][SlagrevZζnow...].μ,
+                                                  prior_Q[Zcand][SlagrevZζnow...].M  )
+              llikmarg_cand[ℓ] += logSBMmarginal( N_now[Zcand][:,SlagrevZζnow...] .+ eSt,
+                                                  prior_Q[Zcand][SlagrevZζnow...].p1_now,
+                                                  prior_Q[Zcand][SlagrevZζnow...].α,
+                                                  prior_Q[Zcand][SlagrevZζnow...].μ,
+                                                  prior_Q[Zcand][SlagrevZζnow...].M  )
+
+              lw[ℓ] = llikmarg_cand[ℓ] + lΛ[Zcand] + lλ[Zcand][ζcand]
+            end
       end
 
       w = exp.( lw - maximum(lw) )
       newindx = StatsBase.sample(Weights( w ))
       Zζ_out[i] = copy(newindx)
 
-      ## update running llikmarg
+      ## update running quantities
       Znew, ζnew = copy(λ_indx.Zζindx[newindx,1]), copy(λ_indx.Zζindx[newindx,2])
       N_now[Znew][:,Slagrev_now[ λ_indx.indxs[Znew][ζnew] ]...] += eSt
       llikmarg = copy(llikmarg_cand[newindx])
-
-    end
+  end
 
   Zζ_out
 end
@@ -732,12 +744,12 @@ function MetropIndep_ΛλZζ(S::Vector{Int}, lΛ_old::Vector{Float64},
 
   if typeof(prior_λ)==Vector{Vector{Float64}}
       lλ_cand = [ BayesInference.rDirichlet(prior_λ[m], true) for m in 1:M ]
-    elseif typeof(prior_λ)==Vector{Vector{Float64}}
+    elseif typeof(prior_λ)==Vector{SparseDirMixPrior}
       lλ_cand = [ rSparseDirMix(prior_λ[m].α, prior_λ[m].β, true) for m in 1:M ]
     elseif typeof(prior_λ)==Vector{SparseSBPrior}
-      lλ_cand = [ rpost_sparseStickBreak(zeros(Float64, λ_indx.lens[m]), prior_λ[m].p1, prior_λ[m].α, prior_λ[m].μ, prior_λ[m].M) for m in 1:M ]
+      lλ_cand = [ rpost_sparseStickBreak(zeros(Float64, λ_indx.lens[m]), prior_λ[m].p1, prior_λ[m].α, prior_λ[m].μ, prior_λ[m].M, true)[1] for m in 1:M ]
     elseif typeof(prior_λ)==Vector{SparseSBPriorP}
-      lλ_cand = [ rpost_sparseStickBreak(zeros(Float64, λ_indx.lens[m]), prior_λ[m].p1_now, prior_λ[m].α, prior_λ[m].μ, prior_λ[m].M) for m in 1:M ]
+      lλ_cand = [ rpost_sparseStickBreak(zeros(Float64, λ_indx.lens[m]), prior_λ[m].p1_now, prior_λ[m].α, prior_λ[m].μ, prior_λ[m].M, true)[1] for m in 1:M ]
   end
 
   lΛλ_cand = [ lΛ_cand[λ_indx.Zζindx[j,1]] + lλ_cand[λ_indx.Zζindx[j,1]][λ_indx.Zζindx[j,2]] for j in 1:λ_indx.nZζ ]
@@ -825,9 +837,9 @@ function MetropIndep_ΛλZζ(S::Vector{Int}, lΛ_old::Vector{Float64},
     elseif typeof(prior_λ)==Vector{SparseDirMixPrior}
       lλ_cand = [ rSparseDirMix(prior_λ[m].α, prior_λ[m].β, true) for m in 1:M ]
     elseif typeof(prior_λ)==Vector{SparseSBPrior}
-      lλ_cand = [ rpost_sparseStickBreak(zeros(Float64, λ_indx.lens[m]), prior_λ[m].p1, prior_λ[m].α, prior_λ[m].μ, prior_λ[m].M) for m in 1:M ]
+      lλ_cand = [ rpost_sparseStickBreak(zeros(Float64, λ_indx.lens[m]), prior_λ[m].p1, prior_λ[m].α, prior_λ[m].μ, prior_λ[m].M, true)[1] for m in 1:M ]
     elseif typeof(prior_λ)==Vector{SparseSBPriorP}
-      lλ_cand = [ rpost_sparseStickBreak(zeros(Float64, λ_indx.lens[m]), prior_λ[m].p1_now, prior_λ[m].α, prior_λ[m].μ, prior_λ[m].M) for m in 1:M ]
+      lλ_cand = [ rpost_sparseStickBreak(zeros(Float64, λ_indx.lens[m]), prior_λ[m].p1_now, prior_λ[m].α, prior_λ[m].μ, prior_λ[m].M, true)[1] for m in 1:M ]
   end
 
   lΛλ_cand = [ lΛ_cand[λ_indx.Zζindx[j,1]] + lλ_cand[λ_indx.Zζindx[j,1]][λ_indx.Zζindx[j,2]] for j in 1:λ_indx.nZζ ]
@@ -958,7 +970,7 @@ function mcmc_mmtd!(model::ModMMTD, n_keep::Int, save::Bool=true,
 
             if save
                 @inbounds sims.Λ[i,:] = exp.( model.state.lΛ )
-                @inbounds sims.Zζ[i,monitor_indx] = copy(model.state.Zζ[monitor_indx])
+                @inbounds sims.Zζ[i,:] = copy(model.state.Zζ[monitor_indx])
                 for m in 1:model.M
                     @inbounds sims.λ[m][i,:] = exp.( model.state.lλ[m] )
                     @inbounds sims.Q[m][i,:] = exp.( vec( model.state.lQ[m] ) )
@@ -966,8 +978,9 @@ function mcmc_mmtd!(model::ModMMTD, n_keep::Int, save::Bool=true,
                         sims.p1λ[i,m] = copy(model.prior.λ[m].p1_now)
                     end
                     if QSBMp_flag || QSBMfull_flag
+                        pQvec = vec( model.prior.lQ[m] )
                         for kk in 1:model.K^m
-                            sims.p1Q[m][i,kk] = copy( model.prior.Q[m][kk].p1_now )
+                            sims.p1Q[m][i,kk] = copy( pQvec[kk].p1_now )
                         end
                     end
                 end
