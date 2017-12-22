@@ -47,7 +47,7 @@ type PostSimsMMTD
   p1λ::Matrix{Float64} # SBM π
   p1Q::Vector{Matrix{Float64}} # SBM π
 
-  PostSimsMMTD(Λ, λ, Q, Z, ζ, p1λ, p1Q) = new(Λ, λ, Q, Z, ζ, p1λ, p1Q)
+  PostSimsMMTD(Λ, λ, Q, Zζ, p1λ, p1Q) = new(Λ, λ, Q, Zζ, p1λ, p1Q)
 end
 
 """
