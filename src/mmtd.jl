@@ -747,9 +747,9 @@ function MetropIndep_ΛλZζ(S::Vector{Int}, lΛ_old::Vector{Float64},
     elseif typeof(prior_λ)==Vector{SparseDirMixPrior}
       lλ_cand = [ rSparseDirMix(prior_λ[m].α, prior_λ[m].β, true) for m in 1:M ]
     elseif typeof(prior_λ)==Vector{SparseSBPrior}
-      lλ_cand = [ rpost_sparseStickBreak(zeros(Float64, λ_indx.lens[m]), prior_λ[m].p1, prior_λ[m].α, prior_λ[m].μ, prior_λ[m].M, true)[1] for m in 1:M ]
+      lλ_cand = [ rpost_sparseStickBreak(zeros(Int64, λ_indx.lens[m]), prior_λ[m].p1, prior_λ[m].α, prior_λ[m].μ, prior_λ[m].M, true)[1] for m in 1:M ]
     elseif typeof(prior_λ)==Vector{SparseSBPriorP}
-      lλ_cand = [ rpost_sparseStickBreak(zeros(Float64, λ_indx.lens[m]), prior_λ[m].p1_now, prior_λ[m].α, prior_λ[m].μ, prior_λ[m].M, true)[1] for m in 1:M ]
+      lλ_cand = [ rpost_sparseStickBreak(zeros(Int64, λ_indx.lens[m]), prior_λ[m].p1_now, prior_λ[m].α, prior_λ[m].μ, prior_λ[m].M, true)[1] for m in 1:M ]
   end
 
   lΛλ_cand = [ lΛ_cand[λ_indx.Zζindx[j,1]] + lλ_cand[λ_indx.Zζindx[j,1]][λ_indx.Zζindx[j,2]] for j in 1:λ_indx.nZζ ]
@@ -837,9 +837,9 @@ function MetropIndep_ΛλZζ(S::Vector{Int}, lΛ_old::Vector{Float64},
     elseif typeof(prior_λ)==Vector{SparseDirMixPrior}
       lλ_cand = [ rSparseDirMix(prior_λ[m].α, prior_λ[m].β, true) for m in 1:M ]
     elseif typeof(prior_λ)==Vector{SparseSBPrior}
-      lλ_cand = [ rpost_sparseStickBreak(zeros(Float64, λ_indx.lens[m]), prior_λ[m].p1, prior_λ[m].α, prior_λ[m].μ, prior_λ[m].M, true)[1] for m in 1:M ]
+      lλ_cand = [ rpost_sparseStickBreak(zeros(Int64, λ_indx.lens[m]), prior_λ[m].p1, prior_λ[m].α, prior_λ[m].μ, prior_λ[m].M, true)[1] for m in 1:M ]
     elseif typeof(prior_λ)==Vector{SparseSBPriorP}
-      lλ_cand = [ rpost_sparseStickBreak(zeros(Float64, λ_indx.lens[m]), prior_λ[m].p1_now, prior_λ[m].α, prior_λ[m].μ, prior_λ[m].M, true)[1] for m in 1:M ]
+      lλ_cand = [ rpost_sparseStickBreak(zeros(Int64, λ_indx.lens[m]), prior_λ[m].p1_now, prior_λ[m].α, prior_λ[m].μ, prior_λ[m].M, true)[1] for m in 1:M ]
   end
 
   lΛλ_cand = [ lΛ_cand[λ_indx.Zζindx[j,1]] + lλ_cand[λ_indx.Zζindx[j,1]][λ_indx.Zζindx[j,2]] for j in 1:λ_indx.nZζ ]
@@ -891,7 +891,7 @@ thin=1, report_freq=500, monitor_indx=[1]])
 """
 function mcmc_mmtd!(model::ModMMTD, n_keep::Int, save::Bool=true,
     report_filename::String="out_progress.txt", thin::Int=1, jmpstart_iter::Int=25,
-    report_freq::Int=1000;
+    report_freq::Int=10000;
     monitor_indx::Vector{Int}=[1])
 
     ## output files
