@@ -9,13 +9,13 @@ type ParamsMMTD
   lΛ::Vector{Float64}
   lλ::Vector{Vector{Float64}}
   Zζ::Vector{Int} # will be length TT - R, mapped through ZζtoZandζ()
-  lQ::Vector{Array{Float64}} # organized so first index is now and lag 1 is the next index
+  lQ::Vector{<:Array{Float64}} # organized so first index is now and lag 1 is the next index
 end
 
 type PriorMMTD
   Λ::Union{Vector{Float64}, SparseDirMixPrior, SparseSBPrior, SparseSBPriorFull}
   λ::Union{Vector{Vector{Float64}}, Vector{SparseDirMixPrior}, Vector{SparseSBPrior}, Vector{SparseSBPriorP}, Vector{SparseSBPriorFull}}
-  Q::Union{Vector{Array{Float64}}, Vector{Array{SparseDirMixPrior}}, Vector{Array{SparseSBPrior}}, Vector{Array{SparseSBPriorP}}}
+  Q::Union{Vector{<:Array{Float64}}, Vector{<:Array{SparseDirMixPrior}}, Vector{<:Array{SparseSBPrior}}, Vector{<:Array{SparseSBPriorP}}}
 end
 
 type λindxMMTD
@@ -122,7 +122,7 @@ end
 Calculate full transition tensor from Λ, λ, and Q.
 """
 function transTensor_mmtd(R::Int, M::Int, K::Int, λ_indx::λindxMMTD,
-  Λ::Vector{Float64}, λ::Vector{Vector{Float64}}, Q#=::Vector{Array{Float64}}=#)
+  Λ::Vector{Float64}, λ::Vector{Vector{Float64}}, Q#=::Vector{<:Array{Float64}}=#)
 
   froms, nfroms = create_froms(K, R) # in this case, ordered by now, lag1, lag2, etc.
   Ωmat = zeros(Float64, (K, nfroms))
@@ -328,7 +328,7 @@ end
 """
     rpost_lQ_mmtd(S, TT, prior, Z, ζ, λ_indx, R, M, K)
 """
-function rpost_lQ_mmtd(S::Vector{Int}, TT::Int, prior::Vector{Array{Float64}},
+function rpost_lQ_mmtd(S::Vector{Int}, TT::Int, prior::Vector{<:Array{Float64}},
   Zandζ::Matrix{Int},
   λ_indx::λindxMMTD, R::Int, M::Int, K::Int)
 
@@ -352,7 +352,7 @@ function rpost_lQ_mmtd(S::Vector{Int}, TT::Int, prior::Vector{Array{Float64}},
   lQ_out
 end
 function rpost_lQ_mmtd(S::Vector{Int}, TT::Int,
-  prior::Vector{Array{SparseDirMixPrior}},
+  prior::Vector{<:Array{SparseDirMixPrior}},
   Zandζ::Matrix{Int},
   λ_indx::λindxMMTD, R::Int, M::Int, K::Int)
 
@@ -376,7 +376,7 @@ function rpost_lQ_mmtd(S::Vector{Int}, TT::Int,
 
   lQ_out
 end
-function rpost_lQ_mmtd(S::Vector{Int}, TT::Int, prior::Vector{Array{SparseSBPrior}},
+function rpost_lQ_mmtd(S::Vector{Int}, TT::Int, prior::Vector{<:Array{SparseSBPrior}},
     Zandζ::Matrix{Int}, λ_indx::λindxMMTD, R::Int, M::Int, K::Int)
 
   prior_vec = [ reshape(prior[m], K^m ) for m in 1:M ]
@@ -399,7 +399,7 @@ function rpost_lQ_mmtd(S::Vector{Int}, TT::Int, prior::Vector{Array{SparseSBPrio
 
   lQ_out
 end
-function rpost_lQ_mmtd!(S::Vector{Int}, TT::Int, prior::Vector{Array{SparseSBPriorP}},
+function rpost_lQ_mmtd!(S::Vector{Int}, TT::Int, prior::Vector{<:Array{SparseSBPriorP}},
     Zandζ::Matrix{Int}, λ_indx::λindxMMTD, R::Int, M::Int, K::Int)
 
   prior_vec = [ reshape(prior[m], K^m ) for m in 1:M ]
@@ -439,7 +439,7 @@ end
     Full conditinal updates for Zζ marginalizing over Q
 """
 function rpost_Zζ_marg(S::Vector{Int}, Zζ_old::Vector{Int}, λ_indx::λindxMMTD,
-    prior_Q::Vector{Array{Float64}},
+    prior_Q::Vector{<:Array{Float64}},
     lΛ::Vector{Float64},
     lλ::Vector{Vector{Float64}},
     TT::Int, R::Int, M::Int, K::Int)
@@ -507,7 +507,7 @@ function rpost_Zζ_marg(S::Vector{Int}, Zζ_old::Vector{Int}, λ_indx::λindxMMT
 end
 function rpost_Zζ_marg(S::Vector{Int}, Zζ_old::Vector{Int},
     λ_indx::λindxMMTD,
-    prior_Q::Vector{Array{SparseDirMixPrior}},
+    prior_Q::Vector{<:Array{SparseDirMixPrior}},
     lΛ::Vector{Float64},
     lλ::Vector{Vector{Float64}},
     TT::Int, R::Int, M::Int, K::Int)
@@ -579,7 +579,7 @@ function rpost_Zζ_marg(S::Vector{Int}, Zζ_old::Vector{Int},
 end
 function rpost_Zζ_marg(S::Vector{Int}, Zζ_old::Vector{Int},
     λ_indx::λindxMMTD,
-    prior_Q::Union{Vector{Array{SparseSBPrior}}, Vector{Array{SparseSBPriorP}}},
+    prior_Q::Union{Vector{<:Array{SparseSBPrior}}, Vector{<:Array{SparseSBPriorP}}},
     lΛ::Vector{Float64},
     lλ::Vector{Vector{Float64}},
     TT::Int, R::Int, M::Int, K::Int)
@@ -588,8 +588,8 @@ function rpost_Zζ_marg(S::Vector{Int}, Zζ_old::Vector{Int},
   Zandζ_now = ZζtoZandζ(Zζ_out, λ_indx) # won't get updated
   prior_Q_vec = [ reshape(prior_Q[m], (K^m)) for m in 1:M ]
 
-  SBM_flag = typeof(prior_Q) == Vector{Array{SparseSBPrior}}
-  SBMp_flag = typeof(prior_Q) == Vector{Array{SparseSBPriorP}}
+  SBM_flag = typeof(prior_Q) <: Vector{<:Array{SparseSBPrior}}
+  SBMp_flag = typeof(prior_Q) <: Vector{<:Array{SparseSBPriorP}}
 
   ## calculate current log marginal likelihood
   N_now = counttrans_mmtd(S, TT, Zandζ_now, λ_indx, R, M, K) # vector of arrays, indices in reverse time
@@ -727,12 +727,12 @@ function MetropIndep_ΛλZζ(S::Vector{Int}, lΛ_old::Vector{Float64},
     lλ_old::Vector{Vector{Float64}}, Zζ_old::Vector{Int},
     prior_Λ::Union{Vector{Float64}, SparseDirMixPrior},
     prior_λ::Union{Vector{Vector{Float64}}, Vector{SparseDirMixPrior}, Vector{SparseSBPrior}, Vector{SparseSBPriorP}},
-    prior_Q::Union{Vector{Array{SparseSBPrior}}, Vector{Array{SparseSBPriorP}}},
+    prior_Q::Union{Vector{<:Array{SparseSBPrior}}, Vector{<:Array{SparseSBPriorP}}},
     λ_indx::λindxMMTD,
     TT::Int, R::Int, M::Int, K::Int)
 
-  Q_SBM_flag = typeof(prior_Q) == Vector{Array{SparseSBPrior}}
-  Q_SBMp_flag = typeof(prior_Q) == Vector{Array{SparseSBPriorP}}
+  Q_SBM_flag = typeof(prior_Q) <: Vector{<:Array{SparseSBPrior}}
+  Q_SBMp_flag = typeof(prior_Q) <: Vector{<:Array{SparseSBPriorP}}
 
   prior_Q_vec = [ reshape(prior_Q[m], (K^m)) for m in 1:M ]
 
@@ -822,7 +822,7 @@ function MetropIndep_ΛλZζ(S::Vector{Int}, lΛ_old::Vector{Float64},
     lλ_old::Vector{Vector{Float64}}, Zζ_old::Vector{Int},
     prior_Λ::Union{Vector{Float64}, SparseDirMixPrior},
     prior_λ::Union{Vector{Vector{Float64}}, Vector{SparseDirMixPrior}, Vector{SparseSBPrior}, Vector{SparseSBPriorP}},
-    prior_Q::Vector{Array{Float64}},
+    prior_Q::Vector{<:Array{Float64}},
     λ_indx::λindxMMTD,
     TT::Int, R::Int, M::Int, K::Int)
 
@@ -912,8 +912,8 @@ function mcmc_mmtd!(model::ModMMTD, n_keep::Int, save::Bool=true,
         ## flags
         λSBMp_flag = typeof(model.prior.λ) == Vector{BayesInference.SparseSBPriorP}
         λSBMfull_flag = typeof(model.prior.λ) == Vector{BayesInference.SparseSBPriorFull}
-        QSBMp_flag = typeof(model.prior.Q) == Vector{Array{BayesInference.SparseSBPriorP}}
-        QSBMfull_flag = typeof(model.prior.Q) == Vector{Array{BayesInference.SparseSBPriorFull}}
+        QSBMp_flag = typeof(model.prior.Q) <: Vector{<:Array{BayesInference.SparseSBPriorP}}
+        QSBMfull_flag = typeof(model.prior.Q) <: Vector{<:Array{BayesInference.SparseSBPriorFull}}
 
         ## sampling
         for i in 1:n_keep
