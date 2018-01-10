@@ -3,7 +3,8 @@
 export ParamsMMTD, PriorMMTD, ModMMTD, λindxMMTD,
   build_λ_indx, ZζtoZandζ, sim_mmtd, symmetricDirPrior_mmtd, transTensor_mmtd,
   rpost_lΛ_mmtd, rpost_lλ_mmtd, counttrans_mmtd, rpost_lQ_mmtd,
-  rpost_Zζ_mtd_marg, MetropIndep_ΛλZζ, mcmc_mmtd!; # remove the inner functions after testing
+  rpost_Zζ_mtd_marg, MetropIndep_ΛλZζ, mcmc_mmtd!,
+  bfact_MC; # remove the inner functions after testing
 
 type ParamsMMTD
   lΛ::Vector{Float64}
@@ -996,3 +997,115 @@ function mcmc_mmtd!(model::ModMMTD, n_keep::Int, save::Bool=true,
         end
 
     end
+
+
+"""
+Bayes factors for high order Markov chains
+
+### Example
+```julia
+R = 4
+M = 2
+K = 2
+λ_indx = build_λ_indx(R, M)
+TT = 200
+## simulate a chain with order 2, lags 1 and 3 important
+S = sim_mmtd(TT, 100, R, M, K, λ_indx, # non-sparse transitions
+    [ 0.0, 1.0 ],
+    [ [1.0, 0.0, 0.0, 0.0 ],
+      [0.0, 1.0, 0.0, 0.0, 0.0, 0.0] ],
+    [ reshape( [1.0, 0.0, 1.0, 0.0], K, K),
+      reshape( [0.8, 0.2, 0.3, 0.7, 0.5, 0.5, 0.1, 0.9], K, K, K ) ] )[1]
+S = sim_mmtd(TT, 100, R, M, K, λ_indx, # sparse transitions
+    [ 0.0, 1.0 ],
+    [ [1.0, 0.0, 0.0, 0.0 ],
+      [0.0, 1.0, 0.0, 0.0, 0.0, 0.0] ],
+    [ reshape( [1.0, 0.0, 1.0, 0.0], K, K),
+      reshape( [0.9, 0.1, 0.2, 0.8, 0.15, 0.85, 0.9, 0.1], K, K, K ) ] )[1]
+priQ_type = "Dir"
+priQ_type = "SBM"
+if priQ_type == "Dir"
+    prior_Q = symmetricDirPrior_mmtd(1.0, 1.0, 1.0, R, M, K, λ_indx)[3]
+elseif priQ_type == "SBM"
+    p1_Q = 0.95
+    α_Q = 1.0e3
+    μ_Q = 0.9
+    M_Q = 4.0
+    prior_Q = [ [ SparseSBPrior(α_Q, p1_Q, μ_Q, M_Q) for kk in 1:(K^m) ] for m in 1:M ] # SBM
+    prior_Q = [ reshape(prior_Q[m], fill(K, m)... ) for m in 1:M ]
+end
+
+bf = bfact_MC(S, R, M, K, prior_Q)
+```
+"""
+function bfact_MC(S::Vector{Int}, R::Int, M::Int, K::Int,
+    prior_Q::Vector{<:Array{Float64}})
+
+      TT = length(S)
+      n = TT - R
+
+      λ_indx = build_λ_indx(R, M)
+      llik = zeros(Float64, λ_indx.nZζ)
+
+      for i in 1:λ_indx.nZζ
+
+          Znow = copy(λ_indx.Zζindx[i,1])
+          Zandζ_now = ZζtoZandζ( fill(i, n) , λ_indx)
+
+          ## calculate current log marginal likelihood
+          N_now = counttrans_mmtd(S, TT, Zandζ_now, λ_indx, R, M, K) # vector of arrays, indices in reverse time
+
+          α0_Q = copy(prior_Q[Znow])
+          α1_Q = α0_Q .+ N_now[Znow]
+          α1_Qmat = reshape(α1_Q, K, K^Znow)
+
+          llikmarg = 0.0
+          for kk in 1:(K^Znow)
+            llikmarg += lmvbeta( α1_Qmat[:,kk] )
+          end
+
+          llik[i] = copy(llikmarg)
+      end
+
+      lbfact = llik .- llik[1]
+      bfact = exp.(lbfact)
+
+      (λ_indx, hcat(λ_indx.Zζindx, bfact))
+end
+function bfact_MC(S::Vector{Int}, R::Int, M::Int, K::Int,
+    prior_Q::Vector{<:Array{SparseSBPrior}})
+
+      prior_Q_vec = [ reshape(prior_Q[m], (K^m)) for m in 1:M ]
+
+      TT = length(S)
+      n = TT - R
+
+      λ_indx = build_λ_indx(R, M)
+      llik = zeros(Float64, λ_indx.nZζ)
+
+      for i in 1:λ_indx.nZζ
+
+          Znow, ζnow = copy(λ_indx.Zζindx[i,1:2])
+          Zandζ_now = ZζtoZandζ( fill(i, n) , λ_indx)
+
+          ## calculate current log marginal likelihood
+          N_now = counttrans_mmtd(S, TT, Zandζ_now, λ_indx, R, M, K) # vector of arrays, indices in reverse time
+          N_now_mat = reshape(N_now[Znow], K, K^Znow)
+
+          llikmarg = 0.0
+          for kk in 1:(K^Znow)
+            llikmarg += logSBMmarginal( N_now_mat[:,kk],
+                                        prior_Q_vec[Znow][kk].p1,
+                                        prior_Q_vec[Znow][kk].α,
+                                        prior_Q_vec[Znow][kk].μ,
+                                        prior_Q_vec[Znow][kk].M )
+          end
+
+          llik[i] = copy(llikmarg)
+      end
+
+      lbfact = llik .- llik[1]
+      bfact = exp.(lbfact)
+
+      (λ_indx, hcat(λ_indx.Zζindx, bfact))
+end
