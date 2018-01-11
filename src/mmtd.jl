@@ -4,7 +4,7 @@ export ParamsMMTD, PriorMMTD, ModMMTD, λindxMMTD,
   build_λ_indx, ZζtoZandζ, sim_mmtd, symmetricDirPrior_mmtd, transTensor_mmtd,
   rpost_lΛ_mmtd, rpost_lλ_mmtd, counttrans_mmtd, rpost_lQ_mmtd,
   rpost_Zζ_mtd_marg, MetropIndep_ΛλZζ, mcmc_mmtd!,
-  bfact_MC; # remove the inner functions after testing
+  bfact_MC, forecDist_MMTD; # remove the inner functions after testing
 
 type ParamsMMTD
   lΛ::Vector{Float64}
@@ -1108,4 +1108,40 @@ function bfact_MC(S::Vector{Int}, R::Int, M::Int, K::Int,
       bfact = exp.(lbfact)
 
       (λ_indx, hcat(λ_indx.Zζindx, bfact))
+end
+
+
+"""
+    forecDist_MMTD(Slagrev::Vector{Int}, Λ::Vector{Float64},
+      λ::Vector{Vector{Float64}}, Q::Vector{Array{Float64}},
+      λ_indx::λindxMMTD)
+
+Computes the forecast distribution given lagged values and parameters.
+
+### Example
+```julia
+    Λ = [0.0, 1.0]
+    λ = [[0.0, 0.0, 1.0], [0.0, 1.0, 0.0]]
+    Q = [ reshape([0.7, 0.3, 0.25, 0.75], (2,2)),
+          reshape([0.1, 0.9, 0.4, 0.6, 0.5, 0.5, 0.2, 0.8], (2,2,2)) ]
+    λ_indx = build_λ_indx(3,2)
+    Slagrev = [1,1,2]
+    forecDist_MMTD(Slagrev, Λ, λ, Q, λ_indx)
+```
+"""
+function forecDist_MMTD(Slagrev::Vector{Int}, Λ::Vector{Float64},
+  λ::Vector{Vector{Float64}}, Q::Vector{Array{Float64}},
+  λ_indx::λindxMMTD)
+    K = size(Q[1])[1]
+    R = size(λ[1])[1]
+    M = size(Λ)[1]
+    assert(size(Slagrev)[1] == R)
+    w = zeros(Float64, K)
+    for k in 1:K
+        for ℓ in 1:λ_indx.nZζ
+            Znow, ζnow = λ_indx.Zζindx[ℓ, 1:2]
+            w[k] += Λ[Znow] * λ[Znow][ζnow] * Q[Znow][k, Slagrev[λ_indx.indxs[Znow][ζnow]]...]
+        end
+    end
+    w
 end
