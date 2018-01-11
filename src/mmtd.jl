@@ -1130,7 +1130,7 @@ Computes the forecast distribution given lagged values and parameters.
 ```
 """
 function forecDist_MMTD(Slagrev::Vector{Int}, Λ::Vector{Float64},
-  λ::Vector{Vector{Float64}}, Q::Vector{Array{Float64}},
+  λ::Vector{Vector{Float64}}, Q::Vector{<:Array{Float64}},
   λ_indx::λindxMMTD)
     K = size(Q[1])[1]
     R = size(λ[1])[1]
