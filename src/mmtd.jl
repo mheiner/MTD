@@ -1085,7 +1085,7 @@ function bfact_MC(S::Vector{Int}, R::Int, M::Int, K::Int,
       (λ_indx, hcat(λ_indx.Zζindx, bfact))
 end
 function bfact_MC(S::Vector{Int}, R::Int, M::Int, K::Int,
-    prior_Q::Vector{<:Array{SparseSBPrior}})
+    prior_Q::Vector{<:Array{SparseSBPrior}}, report="recipmax")
 
       prior_Q_vec = [ reshape(prior_Q[m], (K^m)) for m in 1:M ]
 
