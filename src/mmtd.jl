@@ -1002,6 +1002,11 @@ function mcmc_mmtd!(model::ModMMTD, n_keep::Int, save::Bool=true,
 """
 Bayes factors for high order Markov chains
 
+    The report options are:
+        "lag1" : all factors reported with respect to the first order lag one model.
+        "max" : all factors reported with respect to the maximum.
+        "recipmax" : (default) all factors reported with respect to maximum (with maximum as numerator).
+
 ### Example
 ```julia
 R = 4
@@ -1039,7 +1044,7 @@ bf = bfact_MC(S, R, M, K, prior_Q)
 ```
 """
 function bfact_MC(S::Vector{Int}, R::Int, M::Int, K::Int,
-    prior_Q::Vector{<:Array{Float64}})
+    prior_Q::Vector{<:Array{Float64}}, report="recipmax")
 
       TT = length(S)
       n = TT - R
@@ -1067,7 +1072,14 @@ function bfact_MC(S::Vector{Int}, R::Int, M::Int, K::Int,
           llik[i] = copy(llikmarg)
       end
 
-      lbfact = llik .- llik[1]
+      if report == "recipmax"
+          lbfact = maximum(llik) .- llik
+      elseif report == "max"
+          lbfact = llik .- maximum(llik)
+      elseif "lag1"
+          lbfact = llik .- llik[1]
+      end
+
       bfact = exp.(lbfact)
 
       (λ_indx, hcat(λ_indx.Zζindx, bfact))
@@ -1104,7 +1116,14 @@ function bfact_MC(S::Vector{Int}, R::Int, M::Int, K::Int,
           llik[i] = copy(llikmarg)
       end
 
-      lbfact = llik .- llik[1]
+      if report == "recipmax"
+          lbfact = maximum(llik) .- llik
+      elseif report == "max"
+          lbfact = llik .- maximum(llik)
+      elseif "lag1"
+          lbfact = llik .- llik[1]
+      end
+
       bfact = exp.(lbfact)
 
       (λ_indx, hcat(λ_indx.Zζindx, bfact))
