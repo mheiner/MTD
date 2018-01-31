@@ -78,7 +78,7 @@ end
     sim_mmtd(TT, nburn, R, M, K, λ_indx, Λ, λ, Q)
 """
 function sim_mmtd(TT::Int, nburn::Int, R::Int, M::Int, K::Int, λ_indx::λindxMMTD,
-  Λ::Array{Float64}, λ::Array{Vector{Float64}}, Q#=::Array{Array{Float64}}=#)
+  Λ::Array{Float64}, λ::Array{Vector{Float64}}, Q::Vector{<:Array{Float64}}, tprobsout::Bool=false)
 
   Nsim = nburn + TT
 
@@ -88,14 +88,26 @@ function sim_mmtd(TT::Int, nburn::Int, R::Int, M::Int, K::Int, λ_indx::λindxMM
   S = Vector{Int}(Nsim)
   S[1:R] = StatsBase.sample(1:K, R)
 
+  if tprobsout
+      Pvecs = Matrix{Float64}(Nsim, K)
+      Pvecs[1:R, :] = 0.0
+  end
+
   for tt in (R+1):(Nsim)
     i = tt - R
     Slagrev_now = S[range(tt-1, -1, R)]
     pvec = copy( Q[Z[i]][:, Slagrev_now[λ_indx.indxs[Z[i]][ζ[i,Z[i]]]]...] )
+    if tprobsout
+        Pvecs[tt,:] = copy(pvec)
+    end
     S[tt] = StatsBase.sample(Weights( pvec ))
   end
 
-  S[(nburn+1):(Nsim)], Z[(nburn+1):(Nsim-R)], ζ[(nburn+1):(Nsim-R),:]
+  if tprobsout
+      S[(nburn+1):(Nsim)], Z[(nburn+1):(Nsim-R)], ζ[(nburn+1):(Nsim-R),:], Pvecs
+  else
+      S[(nburn+1):(Nsim)], Z[(nburn+1):(Nsim-R)], ζ[(nburn+1):(Nsim-R),:]
+  end
 end
 
 
@@ -123,7 +135,7 @@ end
 Calculate full transition tensor from Λ, λ, and Q.
 """
 function transTensor_mmtd(R::Int, M::Int, K::Int, λ_indx::λindxMMTD,
-  Λ::Vector{Float64}, λ::Vector{Vector{Float64}}, Q#=::Vector{<:Array{Float64}}=#)
+  Λ::Vector{Float64}, λ::Vector{Vector{Float64}}, Q::Vector{<:Array{Float64}})
 
   froms, nfroms = create_froms(K, R) # in this case, ordered by now, lag1, lag2, etc.
   Ωmat = zeros(Float64, (K, nfroms))
