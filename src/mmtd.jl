@@ -78,7 +78,7 @@ end
     sim_mmtd(TT, nburn, R, M, K, λ_indx, Λ, λ, Q)
 """
 function sim_mmtd(TT::Int, nburn::Int, R::Int, M::Int, K::Int, λ_indx::λindxMMTD,
-  Λ::Array{Float64}, λ::Array{Vector{Float64}}, Q::Vector{<:Array{Float64}}, tprobsout::Bool=false)
+  Λ::Array{Float64}, λ::Array{Vector{Float64}}, Q::Vector{<:Array{Float64}}, Xtras::Bool=false)
 
   Nsim = nburn + TT
 
@@ -88,23 +88,26 @@ function sim_mmtd(TT::Int, nburn::Int, R::Int, M::Int, K::Int, λ_indx::λindxMM
   S = Vector{Int}(Nsim)
   S[1:R] = StatsBase.sample(1:K, R)
 
-  if tprobsout
+  if Xtras
       Pvecs = Matrix{Float64}(Nsim, K)
+      Slagrevs = Matrix{Int}(Nsim, R)
       Pvecs[1:R, :] = 0.0
+      Slagrevs[1:R, :] = 0
   end
 
   for tt in (R+1):(Nsim)
     i = tt - R
-    Slagrev_now = S[range(tt-1, -1, R)]
+    Slagrev_now = copy(S[range(tt-1, -1, R)])
     pvec = copy( Q[Z[i]][:, Slagrev_now[λ_indx.indxs[Z[i]][ζ[i,Z[i]]]]...] )
-    if tprobsout
+    if Xtras
         Pvecs[tt,:] = copy(pvec)
+        Slagrevs[tt,:] = copy(Slagrev_now)
     end
     S[tt] = StatsBase.sample(Weights( pvec ))
   end
 
-  if tprobsout
-      S[(nburn+1):(Nsim)], Z[(nburn+1):(Nsim-R)], ζ[(nburn+1):(Nsim-R),:], Pvecs
+  if Xtras
+      S[(nburn+1):(Nsim)], Z[(nburn+1):(Nsim-R)], ζ[(nburn+1):(Nsim-R),:], Pvecs[(nburn+1):(Nsim),:], Slagrevs[(nburn+1):(Nsim),:]
   else
       S[(nburn+1):(Nsim)], Z[(nburn+1):(Nsim-R)], ζ[(nburn+1):(Nsim-R),:]
   end
