@@ -90,9 +90,9 @@ function sim_mmtd(TT::Int, nburn::Int, R::Int, M::Int, K::Int, λ_indx::λindxMM
 
   if Xtras
       Pvecs = Matrix{Float64}(Nsim, K)
-      Slagrevs = Matrix{Int}(Nsim, R)
+      # Slagrevs = Matrix{Int}(Nsim, R)
       Pvecs[1:R, :] = 0.0
-      Slagrevs[1:R, :] = 0
+      # Slagrevs[1:R, :] = 0
   end
 
   for tt in (R+1):(Nsim)
@@ -101,13 +101,13 @@ function sim_mmtd(TT::Int, nburn::Int, R::Int, M::Int, K::Int, λ_indx::λindxMM
     pvec = copy( Q[Z[i]][:, Slagrev_now[λ_indx.indxs[Z[i]][ζ[i,Z[i]]]]...] )
     if Xtras
         Pvecs[tt,:] = copy(pvec)
-        Slagrevs[tt,:] = copy(Slagrev_now)
+        # Slagrevs[tt,:] = copy(Slagrev_now)
     end
     S[tt] = StatsBase.sample(Weights( pvec ))
   end
 
   if Xtras
-      S[(nburn+1):(Nsim)], Z[(nburn+1):(Nsim-R)], ζ[(nburn+1):(Nsim-R),:], Pvecs[(nburn+1):(Nsim),:], Slagrevs[(nburn+1):(Nsim),:]
+      S[(nburn+1):(Nsim)], Z[(nburn+1):(Nsim-R)], ζ[(nburn+1):(Nsim-R),:], Pvecs[(nburn+1):(Nsim),:]#, Slagrevs[(nburn+1):(Nsim),:]
   else
       S[(nburn+1):(Nsim)], Z[(nburn+1):(Nsim-R)], ζ[(nburn+1):(Nsim-R),:]
   end
