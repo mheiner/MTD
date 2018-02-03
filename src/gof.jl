@@ -50,6 +50,43 @@ function meanForecLoss_MTD(S::Vector{Int}, tprime::Vector{Int},
     end
     (lossMat, missClassMat, negllMat, sqErrMat, forecMat)
 end
+function meanForecLoss_MTD(y::Vector{Int}, X::Matrix{Int}, P::Matrix{Float64},
+    nprime::Int,
+    lossFn::Function, sims::MTD.PostSimsMMTD, TT::Int, R::Int, K::Int,
+    simind::Vector{Int})
+
+    nsim = length(simind)
+    lossMat = zeros(Float64, nsim, nprime)
+    missClassMat = zeros(Int, nsim, nprime)
+    negllMat = zeros(Float64, nsim, nprime)
+    sqErrMat = zeros(Float64, nsim, nprime)
+
+    PlossMat = zeros(Float64, nsim, nprime)
+
+    forecMat = zeros(Float64, nsim, nprime, K)
+
+    for i in 1:nsim
+        for tt in 1:nprime
+            ii = copy( simind[i] )
+            S_now = copy( y[tt] )
+            Slagrev_now = copy( X[tt,:] )
+            Q_now = reshape( sims.Q[1][ii,:], (K,K) ) # output of sims is MMTD
+
+            forec = forecDist(Slagrev_now, sims.λ[1][ii,:], Q_now)
+            St_vec = float([ (k == S_now) for k in 1:K ])
+
+            lossMat[i,tt] = lossFn(St_vec, forec)
+            missClassMat[i,tt] = lossMissedClass(S_now, forec)
+            negllMat[i,tt] = -log(forec[S_now])
+            sqErrMat[i,tt] = lossSqErr(Float64(S_now), forec)
+
+            PlossMat[i,tt] = lossFn(P[i,:], forec)
+
+            forecMat[i,tt,:] = copy(forec)
+        end
+    end
+    (lossMat, missClassMat, negllMat, sqErrMat, PlossMat, forecMat)
+end
 
 
 function meanForecLoss_MMTD(S::Vector{Int}, tprime::Vector{Int},
@@ -90,4 +127,46 @@ function meanForecLoss_MMTD(S::Vector{Int}, tprime::Vector{Int},
         end
     end
     (lossMat, missClassMat, negllMat, sqErrMat, forecMat)
+end
+function meanForecLoss_MMTD(y::Vector{Int}, X::Matrix{Int}, P::Matrix{Float64},
+    nprime::Int,
+    lossFn::Function, sims::MTD.PostSimsMMTD, TT::Int, R::Int, M::Int, K::Int,
+    simind::Vector{Int}, λ_indx::λindxMMTD)
+
+    nsim = length(simind)
+    lossMat = zeros(Float64, nsim, nprime)
+    missClassMat = zeros(Int, nsim, nprime)
+    negllMat = zeros(Float64, nsim, nprime)
+    sqErrMat = zeros(Float64, nsim, nprime)
+
+    PlossMat = zeros(Float64, nsim, nprime)
+
+    forecMat = zeros(Float64, nsim, nprime, K)
+
+    for i in 1:nsim
+
+        ii = copy( simind[i] )
+
+        λ_now = [ copy(sims.λ[m][ii,:]) for m in 1:M ]
+        Q_now = [ reshape( sims.Q[m][ii,:], fill(K, m+1)... ) for m in 1:M ]
+
+        for tt in 1:nprime
+            S_now = copy( y[tt] )
+            Slagrev_now = copy( X[tt,:] )
+
+            forec = forecDist_MMTD(Slagrev_now, sims.Λ[ii,:],
+                                   λ_now, Q_now, λ_indx)
+            St_vec = float([ (k == S_now) for k in 1:K ])
+
+            lossMat[i,tt] = lossFn(St_vec, forec)
+            missClassMat[i,tt] = lossMissedClass(S_now, forec)
+            negllMat[i,tt] = -log(forec[S_now])
+            sqErrMat[i,tt] = lossSqErr(Float64(S_now), forec)
+
+            PlossMat[i,tt] = lossFn(P[tt,:], forec)
+
+            forecMat[i,tt,:] = copy(forec)
+        end
+    end
+    (lossMat, missClassMat, negllMat, sqErrMat, PlossMat, forecMat)
 end
