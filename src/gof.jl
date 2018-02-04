@@ -80,7 +80,7 @@ function meanForecLoss_MTD(y::Vector{Int}, X::Matrix{Int}, P::Matrix{Float64},
             negllMat[i,tt] = -log(forec[S_now])
             sqErrMat[i,tt] = lossSqErr(Float64(S_now), forec)
 
-            PlossMat[i,tt] = lossFn(P[i,:], forec)
+            PlossMat[i,tt] = lossFn(P[tt,:], forec)
 
             forecMat[i,tt,:] = copy(forec)
         end
