@@ -1076,12 +1076,13 @@ function bfact_MC(S::Vector{Int}, R::Int, M::Int, K::Int,
           N_now = counttrans_mmtd(S, TT, Zandζ_now, λ_indx, R, M, K) # vector of arrays, indices in reverse time
 
           α0_Q = copy(prior_Q[Znow])
+          α0_Qmat = reshape(α0_Q, K, K^Znow)
           α1_Q = α0_Q .+ N_now[Znow]
           α1_Qmat = reshape(α1_Q, K, K^Znow)
 
           llikmarg = 0.0
           for kk in 1:(K^Znow)
-            llikmarg += lmvbeta( α1_Qmat[:,kk] )
+            llikmarg += lmvbeta( α1_Qmat[:,kk] ) - lmvbeta( α0_Qmat[:,kk] )
           end
 
           llik[i] = copy(llikmarg)
