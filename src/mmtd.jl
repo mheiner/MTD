@@ -6,27 +6,27 @@ export ParamsMMTD, PriorMMTD, ModMMTD, λindxMMTD,
   rpost_Zζ_mtd_marg, MetropIndep_ΛλZζ, mcmc_mmtd!,
   bfact_MC, forecDist_MMTD; # remove the inner functions after testing
 
-type ParamsMMTD
+mutable struct ParamsMMTD
   lΛ::Vector{Float64}
   lλ::Vector{Vector{Float64}}
   Zζ::Vector{Int} # will be length TT - R, mapped through ZζtoZandζ()
   lQ::Vector{<:Array{Float64}} # organized so first index is now and lag 1 is the next index
 end
 
-type PriorMMTD
+mutable struct PriorMMTD
   Λ::Union{Vector{Float64}, SparseDirMixPrior, SparseSBPrior, SparseSBPriorFull}
   λ::Union{Vector{Vector{Float64}}, Vector{SparseDirMixPrior}, Vector{SparseSBPrior}, Vector{SparseSBPriorP}, Vector{SparseSBPriorFull}}
   Q::Union{Vector{<:Array{Float64}}, Vector{<:Array{SparseDirMixPrior}}, Vector{<:Array{SparseSBPrior}}, Vector{<:Array{SparseSBPriorP}}}
 end
 
-type λindxMMTD
+mutable struct λindxMMTD
     indxs::Vector{Array{Array{Int64,1},1}}
     lens::Vector{Int64}
     Zζindx::Matrix{Int64}
     nZζ::Int64
 end
 
-type ModMMTD
+mutable struct ModMMTD
   R::Int # maximal order
   M::Int # largest order considered
   K::Int # number of states
@@ -40,7 +40,7 @@ type ModMMTD
   ModMMTD(R, M, K, TT, S, prior, state, λ_indx) = new(R, M, K, TT, S, prior, state, λ_indx, UInt64(0))
 end
 
-type PostSimsMMTD
+mutable struct PostSimsMMTD
   Λ::Matrix{Float64}
   λ::Array{Matrix{Float64}}
   Q::Array{Matrix{Float64}} # stored matricized
@@ -604,8 +604,8 @@ function rpost_Zζ_marg(S::Vector{Int}, Zζ_old::Vector{Int},
   Zandζ_now = ZζtoZandζ(Zζ_out, λ_indx) # won't get updated
   prior_Q_vec = [ reshape(prior_Q[m], (K^m)) for m in 1:M ]
 
-  SBM_flag = typeof(prior_Q) <: Vector{<:Array{SparseSBPrior}}
-  SBMp_flag = typeof(prior_Q) <: Vector{<:Array{SparseSBPriorP}}
+  SBM_flag = mutable structof(prior_Q) <: Vector{<:Array{SparseSBPrior}}
+  SBMp_flag = mutable structof(prior_Q) <: Vector{<:Array{SparseSBPriorP}}
 
   ## calculate current log marginal likelihood
   N_now = counttrans_mmtd(S, TT, Zandζ_now, λ_indx, R, M, K) # vector of arrays, indices in reverse time
@@ -747,24 +747,24 @@ function MetropIndep_ΛλZζ(S::Vector{Int}, lΛ_old::Vector{Float64},
     λ_indx::λindxMMTD,
     TT::Int, R::Int, M::Int, K::Int)
 
-  Q_SBM_flag = typeof(prior_Q) <: Vector{<:Array{SparseSBPrior}}
-  Q_SBMp_flag = typeof(prior_Q) <: Vector{<:Array{SparseSBPriorP}}
+  Q_SBM_flag = mutable structof(prior_Q) <: Vector{<:Array{SparseSBPrior}}
+  Q_SBMp_flag = mutable structof(prior_Q) <: Vector{<:Array{SparseSBPriorP}}
 
   prior_Q_vec = [ reshape(prior_Q[m], (K^m)) for m in 1:M ]
 
-  if typeof(prior_Λ)==Vector{Float64}
+  if mutable structof(prior_Λ)==Vector{Float64}
       lΛ_cand = BayesInference.rDirichlet(prior_Λ, true)
-    elseif typeof(prior_Λ)==SparseDirMixPrior
+    elseif mutable structof(prior_Λ)==SparseDirMixPrior
       lΛ_cand = rSparseDirMix(prior_Λ.α, prior_Λ.β, true)
   end
 
-  if typeof(prior_λ)==Vector{Vector{Float64}}
+  if mutable structof(prior_λ)==Vector{Vector{Float64}}
       lλ_cand = [ BayesInference.rDirichlet(prior_λ[m], true) for m in 1:M ]
-    elseif typeof(prior_λ)==Vector{SparseDirMixPrior}
+    elseif mutable structof(prior_λ)==Vector{SparseDirMixPrior}
       lλ_cand = [ rSparseDirMix(prior_λ[m].α, prior_λ[m].β, true) for m in 1:M ]
-    elseif typeof(prior_λ)==Vector{SparseSBPrior}
+    elseif mutable structof(prior_λ)==Vector{SparseSBPrior}
       lλ_cand = [ rpost_sparseStickBreak(zeros(Int64, λ_indx.lens[m]), prior_λ[m].p1, prior_λ[m].α, prior_λ[m].μ, prior_λ[m].M, true)[1] for m in 1:M ]
-    elseif typeof(prior_λ)==Vector{SparseSBPriorP}
+    elseif mutable structof(prior_λ)==Vector{SparseSBPriorP}
       lλ_cand = [ rpost_sparseStickBreak(zeros(Int64, λ_indx.lens[m]), prior_λ[m].p1_now, prior_λ[m].α, prior_λ[m].μ, prior_λ[m].M, true)[1] for m in 1:M ]
   end
 
@@ -842,19 +842,19 @@ function MetropIndep_ΛλZζ(S::Vector{Int}, lΛ_old::Vector{Float64},
     λ_indx::λindxMMTD,
     TT::Int, R::Int, M::Int, K::Int)
 
-  if typeof(prior_Λ)==Vector{Float64}
+  if mutable structof(prior_Λ)==Vector{Float64}
       lΛ_cand = BayesInference.rDirichlet(prior_Λ, true)
-    elseif typeof(prior_Λ)==SparseDirMixPrior
+    elseif mutable structof(prior_Λ)==SparseDirMixPrior
       lΛ_cand = rSparseDirMix(prior_Λ.α, prior_Λ.β, true)
   end
 
-  if typeof(prior_λ)==Vector{Vector{Float64}}
+  if mutable structof(prior_λ)==Vector{Vector{Float64}}
       lλ_cand = [ BayesInference.rDirichlet(prior_λ[m], true) for m in 1:M ]
-    elseif typeof(prior_λ)==Vector{SparseDirMixPrior}
+    elseif mutable structof(prior_λ)==Vector{SparseDirMixPrior}
       lλ_cand = [ rSparseDirMix(prior_λ[m].α, prior_λ[m].β, true) for m in 1:M ]
-    elseif typeof(prior_λ)==Vector{SparseSBPrior}
+    elseif mutable structof(prior_λ)==Vector{SparseSBPrior}
       lλ_cand = [ rpost_sparseStickBreak(zeros(Int64, λ_indx.lens[m]), prior_λ[m].p1, prior_λ[m].α, prior_λ[m].μ, prior_λ[m].M, true)[1] for m in 1:M ]
-    elseif typeof(prior_λ)==Vector{SparseSBPriorP}
+    elseif mutable structof(prior_λ)==Vector{SparseSBPriorP}
       lλ_cand = [ rpost_sparseStickBreak(zeros(Int64, λ_indx.lens[m]), prior_λ[m].p1_now, prior_λ[m].α, prior_λ[m].μ, prior_λ[m].M, true)[1] for m in 1:M ]
   end
 
@@ -926,10 +926,10 @@ function mcmc_mmtd!(model::ModMMTD, n_keep::Int, save::Bool=true,
         end
 
         ## flags
-        λSBMp_flag = typeof(model.prior.λ) == Vector{BayesInference.SparseSBPriorP}
-        λSBMfull_flag = typeof(model.prior.λ) == Vector{BayesInference.SparseSBPriorFull}
-        QSBMp_flag = typeof(model.prior.Q) <: Vector{<:Array{BayesInference.SparseSBPriorP}}
-        QSBMfull_flag = typeof(model.prior.Q) <: Vector{<:Array{BayesInference.SparseSBPriorFull}}
+        λSBMp_flag = mutable structof(model.prior.λ) == Vector{BayesInference.SparseSBPriorP}
+        λSBMfull_flag = mutable structof(model.prior.λ) == Vector{BayesInference.SparseSBPriorFull}
+        QSBMp_flag = mutable structof(model.prior.Q) <: Vector{<:Array{BayesInference.SparseSBPriorP}}
+        QSBMfull_flag = mutable structof(model.prior.Q) <: Vector{<:Array{BayesInference.SparseSBPriorFull}}
 
         ## sampling
         for i in 1:n_keep
@@ -1042,11 +1042,11 @@ S = sim_mmtd(TT, 100, R, M, K, λ_indx, # sparse transitions
       [0.0, 1.0, 0.0, 0.0, 0.0, 0.0] ],
     [ reshape( [1.0, 0.0, 1.0, 0.0], K, K),
       reshape( [0.9, 0.1, 0.2, 0.8, 0.15, 0.85, 0.9, 0.1], K, K, K ) ] )[1]
-priQ_type = "Dir"
-priQ_type = "SBM"
-if priQ_type == "Dir"
+priQ_mutable struct = "Dir"
+priQ_mutable struct = "SBM"
+if priQ_mutable struct == "Dir"
     prior_Q = symmetricDirPrior_mmtd(1.0, 1.0, 1.0, R, M, K, λ_indx)[3]
-elseif priQ_type == "SBM"
+elseif priQ_mutable struct == "SBM"
     p1_Q = 0.95
     α_Q = 1.0e3
     μ_Q = 0.9

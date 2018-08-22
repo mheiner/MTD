@@ -7,7 +7,7 @@ export ParamsMMTD, PriorMMTD, ModMMTD,
   rpost_lΛ_mmtd, rpost_lλ_mmtd, counttrans_mmtd, rpost_lQ_mmtd,
   rpost_Z_mmtd, rpost_ζ_mmtd, rpost_ζ_mtd_marg, MetropIndep_λζ, mcmc_mmtd!; # remove the inner functions after testing
 
-type ParamsMMTD
+mutable struct ParamsMMTD
   lΛ::Vector{Float64}
   lλ::Vector{Vector{Float64}}
   Z::Vector{Int} # will be length TT - R
@@ -15,7 +15,7 @@ type ParamsMMTD
   lQ::Vector{Array{Float64}} # organized so first index is now and lag 1 is the next index
 end
 
-type PriorMMTD
+mutable struct PriorMMTD
   Λ::Union{Vector{Float64}, SparseDirMixPrior, SparseSBPrior, SparseSBPriorFull}
   λ::Union{Vector{Vector{Float64}}, Vector{SparseDirMixPrior}, Vector{SparseSBPrior}, Vector{SparseSBPriorP}, Vector{SparseSBPriorFull}}
   Q::Union{Vector{Matrix{Float64}}, Vector{Vector{SparseDirMixPrior}}, Vector{Vector{SparseSBPrior}}, Vector{Vector{SparseSBPriorP}}}
@@ -31,7 +31,7 @@ type PriorMMTD
   # PriorMMTD(Λ, λ, α0_Q, β_Q, p1_Q, α_Q, μ_Q, M_Q) = new(Λ, λ, α0_Q, β_Q, p1_Q, α_Q, μ_Q, M_Q)
 end
 
-type ModMMTD
+mutable struct ModMMTD
   R::Int # maximal order
   M::Int # largest order considered
   K::Int # number of states
@@ -46,7 +46,7 @@ type ModMMTD
 end
 
 ## Keep around for compatibility with old simulations
-# type PostSimsMMTD
+# mutable struct PostSimsMMTD
 #   Λ::Matrix{Float64}
 #   λ::Array{Matrix{Float64}}
 #   Q::Array{Matrix{Float64}}
@@ -58,7 +58,7 @@ end
 #   PostSimsMMTD(Λ, λ, Q, Z, ζ, p1) = new(Λ, λ, Q, Z, ζ, p1)
 # end
 
-type PostSimsMMTD
+mutable struct PostSimsMMTD
   Λ::Matrix{Float64}
   λ::Array{Matrix{Float64}}
   Q::Array{Matrix{Float64}}
@@ -575,9 +575,9 @@ function rpost_ζ_mtd_marg(S::Vector{Int}, ζ_old::Vector{Int},
     kuse = unique(Slagrev_now)
     nkuse = length(kuse)
 
-    if typeof(prior_Q) == Vector{SparseSBPrior}
+    if mutable structof(prior_Q) == Vector{SparseSBPrior}
         p1_now = [ prior_Q[kk].p1 for kk in kuse]
-    elseif typeof(prior_Q) == Vector{SparseSBPriorP}
+    elseif mutable structof(prior_Q) == Vector{SparseSBPriorP}
         p1_now = [ prior_Q[kk].p1_now for kk in kuse]
     end
 
@@ -630,9 +630,9 @@ function MetropIndep_λζ(S::Vector{Int}, lλ_old::Vector{Float64}, ζ_old::Vect
   N_cand = counttrans_mtd(S, TT, ζ_cand, R, K) # rows are tos, cols are froms
   N_old = counttrans_mtd(S, TT, ζ_old, R, K) # rows are tos, cols are froms
 
-  if typeof(prior_Q[1]) == SparseSBPrior
+  if mutable structof(prior_Q[1]) == SparseSBPrior
       p1_now = [ copy( prior_Q[kk].p1 ) for kk in 1:K ]
-  elseif typeof(prior_Q[1]) == SparseSBPriorP
+  elseif mutable structof(prior_Q[1]) == SparseSBPriorP
       p1_now = [ copy( prior_Q[kk].p1_now ) for kk in 1:K ]
   end
 
@@ -666,9 +666,9 @@ function MetropIndep_λζ(S::Vector{Int}, lλ_old::Vector{Float64}, ζ_old::Vect
   N_cand = counttrans_mtd(S, TT, ζ_cand, R, K) # rows are tos, cols are froms
   N_old = counttrans_mtd(S, TT, ζ_old, R, K) # rows are tos, cols are froms
 
-  if typeof(prior_Q[1]) == SparseSBPrior
+  if mutable structof(prior_Q[1]) == SparseSBPrior
       p1_now = [ copy( prior_Q[kk].p1 ) for kk in 1:K ]
-  elseif typeof(prior_Q[1]) == SparseSBPriorP
+  elseif mutable structof(prior_Q[1]) == SparseSBPriorP
       p1_now = [ copy( prior_Q[kk].p1_now ) for kk in 1:K ]
   end
 
@@ -776,10 +776,10 @@ function mcmc_mmtd!(model::ModMMTD, n_keep::Int, save::Bool=true,
 
         ## flags
         Mbig_flag = model.M > 1
-        λSBMp_flag = typeof(model.prior.λ) == Vector{BayesInference.SparseSBPriorP}
-        λSBMfull_flag = typeof(model.prior.λ) == Vector{BayesInference.SparseSBPriorFull}
-        QSBMp_flag = typeof(model.prior.Q) == Vector{Vector{BayesInference.SparseSBPriorP}}
-        QSBMfull_flag = typeof(model.prior.Q) == Vector{Vector{BayesInference.SparseSBPriorFull}}
+        λSBMp_flag = mutable structof(model.prior.λ) == Vector{BayesInference.SparseSBPriorP}
+        λSBMfull_flag = mutable structof(model.prior.λ) == Vector{BayesInference.SparseSBPriorFull}
+        QSBMp_flag = mutable structof(model.prior.Q) == Vector{Vector{BayesInference.SparseSBPriorP}}
+        QSBMfull_flag = mutable structof(model.prior.Q) == Vector{Vector{BayesInference.SparseSBPriorFull}}
 
 
         ## sampling
