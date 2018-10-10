@@ -7,7 +7,6 @@ using StatsBase
 using Dates
 
 ## personal packages
-using BayesInference
 using SparseProbVec
 
 include("general.jl")
