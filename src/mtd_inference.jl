@@ -334,7 +334,7 @@ function rpost_ζ_mtd_marg(S::Vector{Int}, ζ_old::Vector{Int},
         end
     end
 
-    w = exp.( lw - maximum(lw) )
+    w = exp.( lw .- maximum(lw) )
     ζ_out[i] = StatsBase.sample(Weights( w ))
     N_now = copy(N0)
     N_now[ S[tt], Slagrev_now[ ζ_out[i] ] ] += 1
@@ -378,7 +378,7 @@ function rpost_ζ_mtd_marg(S::Vector{Int}, ζ_old::Vector{Int},
         end
     end
 
-    w = exp.( lw - maximum(lw) )
+    w = exp.( lw .- maximum(lw) )
     ζ_out[i] = StatsBase.sample(Weights( w ))
     N_now = copy(N0)
     N_now[ S[tt], Slagrev_now[ ζ_out[i] ] ] += 1

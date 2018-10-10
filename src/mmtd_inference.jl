@@ -312,36 +312,6 @@ end
 
 
 """
-    counttrans_mtd(S, TT, ζ, R, K)
-
-    ### Example
-    ```julia
-    R = 2
-    K = 3
-    TT = 12
-    S = [1,2,1,3,3,1,2,1,3,2,1,1]
-    ζ = [1,2,1,2,1,2,1,2,1,2]
-      counttrans_mtd(S, TT, ζ, R, K)
-    ```
-"""
-function counttrans_mtd(S::Vector{Int}, TT::Int, ζ::Vector{Int},
-  R::Int, K::Int)
-
-  ## initialize
-  N_out = zeros(Int, (K,K))
-
-  ## pass through data and add counts
-  for tt in (R+1):(TT)
-    Slagrev_now = copy( S[range(tt-1, step=-1, length=R)] )
-    from = copy( Slagrev_now[ ζ[tt-R] ] )
-    N_out[ S[tt], from ] += 1
-  end
-
-  N_out
-end
-
-
-"""
     rpost_lQ_mmtd(S, TT, prior, Z, ζ, λ_indx, R, M, K)
 """
 function rpost_lQ_mmtd(S::Vector{Int}, TT::Int, prior::Vector{<:Array{Float64}},
