@@ -35,9 +35,9 @@ mutable struct ModMMTD
   prior::PriorMMTD
   state::ParamsMMTD
   λ_indx::λindxMMTD
-  iter::UInt64
+  iter::Int
 
-  ModMMTD(R, M, K, TT, S, prior, state, λ_indx) = new(R, M, K, TT, S, prior, state, λ_indx, UInt64(0))
+  ModMMTD(R, M, K, TT, S, prior, state, λ_indx) = new(R, M, K, TT, S, prior, state, λ_indx, 0)
 end
 
 mutable struct PostSimsMMTD

@@ -11,8 +11,8 @@ using BayesInference
 using SparseProbVec
 
 include("general.jl")
-include("mmtd.jl")
-# include("mmtd_M1.jl") # for sparseProbVec paper simulations
+include("mtd_inference.jl")
+include("mmtd_inference.jl")
 include("gof.jl")
 
 end # module
