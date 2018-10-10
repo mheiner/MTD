@@ -161,7 +161,7 @@ end
 function rpost_lΛ_mmtd(α0_Λ::Vector{Float64}, Z::Vector{Int}, M::Int)
   Nz = StatsBase.counts(Z, 1:M)
   α1_Λ = α0_Λ + Nz
-  BayesInference.rDirichlet(α1_Λ, true)
+  SparseProbVec.rDirichlet(α1_Λ, true)
 end
 function rpost_lΛ_mmtd(prior::SparseDirMixPrior,
     Z::Vector{Int}, M::Int)
@@ -193,7 +193,7 @@ function rpost_lλ_mmtd(α0_λ::Vector{Vector{Float64}}, Zandζ::Matrix{Int},
     Zmindx = findall(Z .== m)
     Nζ = StatsBase.counts(ζ[Zmindx], 1:λ_lens[m])
     α1_λ = α0_λ[m] .+ Nζ
-    lλ_out[m] = BayesInference.rDirichlet(α1_λ, true)
+    lλ_out[m] = SparseProbVec.rDirichlet(α1_λ, true)
   end
 
   lλ_out
@@ -360,7 +360,7 @@ function rpost_lQ_mmtd(S::Vector{Int}, TT::Int, prior::Vector{<:Array{Float64}},
     α1_Q = α0_Q[m] .+ N[m]
     α1_Q_mat = reshape(α1_Q, (K, ncol))
     for j in 1:ncol
-      lQ_mats[m][:,j] = BayesInference.rDirichlet(α1_Q_mat[:,j], true)
+      lQ_mats[m][:,j] = SparseProbVec.rDirichlet(α1_Q_mat[:,j], true)
     end
     lQ_out[m] = reshape(lQ_mats[m], fill(K, m+1)...)
   end
@@ -475,7 +475,7 @@ function rpost_Zζ_marg(S::Vector{Int}, Zζ_old::Vector{Int}, λ_indx::λindxMMT
   llikmarg = 0.0
   for m in 1:M
       for kk in 1:(K^m)
-          llikmarg += lmvbeta( α1_Q_mats[m][:,kk] )
+          llikmarg += SparseProbVec.lmvbeta( α1_Q_mats[m][:,kk] )
       end
   end
 
@@ -490,9 +490,9 @@ function rpost_Zζ_marg(S::Vector{Int}, Zζ_old::Vector{Int}, λ_indx::λindxMMT
 
     # remove S_t from llikmarg
     SlagrevZζnow = copy(Slagrev_now[ λ_indx.indxs[Zold][ζold] ])
-    llikmarg -= lmvbeta( α1_Q[Zold][:,SlagrevZζnow...] )
+    llikmarg -= SparseProbVec.lmvbeta( α1_Q[Zold][:,SlagrevZζnow...] )
     α1_Q[Zold][:,SlagrevZζnow...] -= eSt
-    llikmarg += lmvbeta( α1_Q[Zold][:,SlagrevZζnow...] )
+    llikmarg += SparseProbVec.lmvbeta( α1_Q[Zold][:,SlagrevZζnow...] )
 
     # calculate llikmarg and update probability under each possible Zζ
     llikmarg_cand = fill(llikmarg, λ_indx.nZζ)
@@ -502,8 +502,8 @@ function rpost_Zζ_marg(S::Vector{Int}, Zζ_old::Vector{Int}, λ_indx::λindxMMT
         Zcand, ζcand = copy(λ_indx.Zζindx[ℓ,1]), copy(λ_indx.Zζindx[ℓ,2])
         SlagrevZζnow = copy(Slagrev_now[ λ_indx.indxs[Zcand][ζcand] ])
 
-        llikmarg_cand[ℓ] -= lmvbeta( α1_Q[Zcand][:,SlagrevZζnow...] )
-        llikmarg_cand[ℓ] += lmvbeta( α1_Q[Zcand][:,SlagrevZζnow...] .+ eSt )
+        llikmarg_cand[ℓ] -= SparseProbVec.lmvbeta( α1_Q[Zcand][:,SlagrevZζnow...] )
+        llikmarg_cand[ℓ] += SparseProbVec.lmvbeta( α1_Q[Zcand][:,SlagrevZζnow...] .+ eSt )
 
         lw[ℓ] = llikmarg_cand[ℓ] + lΛ[Zcand] + lλ[Zcand][ζcand]
     end
@@ -753,13 +753,13 @@ function MetropIndep_ΛλZζ(S::Vector{Int}, lΛ_old::Vector{Float64},
   prior_Q_vec = [ reshape(prior_Q[m], (K^m)) for m in 1:M ]
 
   if typeof(prior_Λ)==Vector{Float64}
-      lΛ_cand = BayesInference.rDirichlet(prior_Λ, true)
+      lΛ_cand = SparseProbVec.rDirichlet(prior_Λ, true)
     elseif typeof(prior_Λ)==SparseDirMixPrior
       lΛ_cand = rSparseDirMix(prior_Λ.α, prior_Λ.β, true)
   end
 
   if typeof(prior_λ)==Vector{Vector{Float64}}
-      lλ_cand = [ BayesInference.rDirichlet(prior_λ[m], true) for m in 1:M ]
+      lλ_cand = [ SparseProbVec.rDirichlet(prior_λ[m], true) for m in 1:M ]
     elseif typeof(prior_λ)==Vector{SparseDirMixPrior}
       lλ_cand = [ rSparseDirMix(prior_λ[m].α, prior_λ[m].β, true) for m in 1:M ]
     elseif typeof(prior_λ)==Vector{SparseSBPrior}
@@ -843,13 +843,13 @@ function MetropIndep_ΛλZζ(S::Vector{Int}, lΛ_old::Vector{Float64},
     TT::Int, R::Int, M::Int, K::Int)
 
   if typeof(prior_Λ)==Vector{Float64}
-      lΛ_cand = BayesInference.rDirichlet(prior_Λ, true)
+      lΛ_cand = SparseProbVec.rDirichlet(prior_Λ, true)
     elseif typeof(prior_Λ)==SparseDirMixPrior
       lΛ_cand = rSparseDirMix(prior_Λ.α, prior_Λ.β, true)
   end
 
   if typeof(prior_λ)==Vector{Vector{Float64}}
-      lλ_cand = [ BayesInference.rDirichlet(prior_λ[m], true) for m in 1:M ]
+      lλ_cand = [ SparseProbVec.rDirichlet(prior_λ[m], true) for m in 1:M ]
     elseif typeof(prior_λ)==Vector{SparseDirMixPrior}
       lλ_cand = [ rSparseDirMix(prior_λ[m].α, prior_λ[m].β, true) for m in 1:M ]
     elseif typeof(prior_λ)==Vector{SparseSBPrior}
@@ -879,8 +879,8 @@ function MetropIndep_ΛλZζ(S::Vector{Int}, lΛ_old::Vector{Float64},
   for m in 1:M
       for ℓ in 1:(K^m)
           α_now = copy(prior_Q_mats[m][:,ℓ])
-          llikmarg_cand += lmvbeta( N_cand_mats[m][:,ℓ] + α_now )
-          llikmarg_old += lmvbeta( N_old_mats[m][:,ℓ] + α_now )
+          llikmarg_cand += SparseProbVec.lmvbeta( N_cand_mats[m][:,ℓ] + α_now )
+          llikmarg_old += SparseProbVec.lmvbeta( N_old_mats[m][:,ℓ] + α_now )
       end
   end
 
@@ -1080,7 +1080,7 @@ function bfact_MC(S::Vector{Int}, R::Int, M::Int, K::Int,
 
           llikmarg = 0.0
           for kk in 1:(K^Znow)
-            llikmarg += lmvbeta( α1_Qmat[:,kk] ) - lmvbeta( α0_Qmat[:,kk] )
+            llikmarg += SparseProbVec.lmvbeta( α1_Qmat[:,kk] ) - SparseProbVec.lmvbeta( α0_Qmat[:,kk] )
           end
 
           llik[i] = copy(llikmarg)

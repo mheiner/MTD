@@ -101,7 +101,7 @@ function sim_mmtd(TT::Int, nburn::Int, R::Int, M::Int, K::Int, λ_indx::Tuple,
   Z = [ StatsBase.sample(Weights(Λ)) for i in 1:(Nsim-R) ]
   ζ = [ StatsBase.sample(Weights(λ[m])) for i in 1:(Nsim-R), m in 1:M ]
 
-  S = Vector{Int}(Nsim)
+  S = Vector{Int}(undef, Nsim)
   S[1:R] = StatsBase.sample(1:K, R)
 
   for tt in (R+1):(Nsim)
@@ -151,7 +151,7 @@ function transTensor_mmtd(R::Int, M::Int, K::Int, λ_indx::Tuple,
       end
     end
   end
-  reshape(Ωmat, (fill(K,R+1)...))
+  reshape(Ωmat, fill(K,R+1)...)
 end
 
 
@@ -161,7 +161,7 @@ end
 function rpost_lΛ_mmtd(α0_Λ::Vector{Float64}, Z::Vector{Int}, M::Int)
   Nz = StatsBase.counts(Z, 1:M)
   α1_Λ = α0_Λ + Nz
-  BayesInference.rDirichlet(α1_Λ, true)
+  SparseProbVec.rDirichlet(α1_Λ, true)
 end
 function rpost_lΛ_mmtd(prior::SparseDirMixPrior,
     Z::Vector{Int}, M::Int)
@@ -185,12 +185,12 @@ end
 function rpost_lλ_mmtd(α0_λ::Vector{Vector{Float64}}, ζ::Matrix{Int},
   λ_lens::Vector{Int}, M::Int)
 
-  lλ_out = [ Vector{Float64}(λ_lens[m]) for m in 1:M ]
+  lλ_out = [ Vector{Float64}(undef, λ_lens[m]) for m in 1:M ]
 
   for m in 1:M
     Nζ = StatsBase.counts(ζ[:,m], 1:λ_lens[m])
     α1_λ = α0_λ[m] + Nζ
-    lλ_out[m] = BayesInference.rDirichlet(α1_λ, true)
+    lλ_out[m] = SparseProbVec.rDirichlet(α1_λ, true)
   end
 
   lλ_out
@@ -198,7 +198,7 @@ end
 function rpost_lλ_mmtd(prior::Vector{SparseDirMixPrior}, ζ::Matrix{Int},
   λ_lens::Vector{Int}, M::Int)
 
-  lλ_out = [ Vector{Float64}(λ_lens[m]) for m in 1:M ]
+  lλ_out = [ Vector{Float64}(undef, λ_lens[m]) for m in 1:M ]
 
   for m in 1:M
     Nζ = StatsBase.counts(ζ[:,m], 1:λ_lens[m])
@@ -211,7 +211,7 @@ end
 function rpost_lλ_mmtd(prior::Array{SparseSBPrior}, ζ::Matrix{Int},
   λ_lens::Vector{Int}, M::Int)
 
-  lλ_out = [ Vector{Float64}(λ_lens[m]) for m in 1:M ]
+  lλ_out = [ Vector{Float64}(undef, λ_lens[m]) for m in 1:M ]
 
   for m in 1:M
     Nζ = StatsBase.counts(ζ[:,m], 1:λ_lens[m])
@@ -227,7 +227,7 @@ end
 function rpost_lλ_mmtd!(prior::Array{SparseSBPriorP}, ζ::Matrix{Int},
   λ_lens::Vector{Int}, M::Int)
 
-  lλ_out = [ Vector{Float64}(λ_lens[m]) for m in 1:M ]
+  lλ_out = [ Vector{Float64}(undef, λ_lens[m]) for m in 1:M ]
 
   for m in 1:M
     Nζ = StatsBase.counts(ζ[:,m], 1:λ_lens[m])
@@ -243,7 +243,7 @@ end
 function rpost_lλ_mmtd!(prior::Array{SparseSBPriorFull}, ζ::Matrix{Int},
   λ_lens::Vector{Int}, M::Int)
 
-  lλ_out = [ Vector{Float64}(λ_lens[m]) for m in 1:M ]
+  lλ_out = [ Vector{Float64}(undef, λ_lens[m]) for m in 1:M ]
 
   for m in 1:M
     Nζ = StatsBase.counts(ζ[:,m], 1:λ_lens[m])
@@ -264,7 +264,7 @@ function counttrans_mmtd(S::Vector{Int}, TT::Int, Z::Vector{Int}, ζ::Matrix{Int
   λ_indx::Tuple, R::Int, M::Int, K::Int)
 
   ## initialize
-  N_out = [ zeros(Int, (fill(K, m+1)...)) for m in 1:M ]
+  N_out = [ zeros(Int, fill(K, m+1)...) for m in 1:M ]
 
   ## pass through data and add counts
   for tt in (R+1):(TT)
@@ -316,7 +316,7 @@ function rpost_lQ_mmtd(S::Vector{Int}, TT::Int, prior::Vector{Matrix{Float64}},
   ## initialize
   α0_Q = copy(prior)
   lQ_mats = [ Matrix{Float64}(K, K^m) for m in 1:M ]
-  lQ_out = [ reshape(lQ_mats[m], (fill(K, m+1)...)) for m in 1:M ]
+  lQ_out = [ reshape(lQ_mats[m], fill(K, m+1)...) for m in 1:M ]
 
   N = counttrans_mmtd(S, TT, Z, ζ, λ_indx, R, M, K)
 
@@ -325,9 +325,9 @@ function rpost_lQ_mmtd(S::Vector{Int}, TT::Int, prior::Vector{Matrix{Float64}},
     Nmat = reshape(N[m], (K, ncol))
     α1_Q = α0_Q[m] + Nmat
     for j in 1:ncol
-      lQ_mats[m][:,j] = BayesInference.rDirichlet(α1_Q[:,j], true)
+      lQ_mats[m][:,j] = SparseProbVec.rDirichlet(α1_Q[:,j], true)
     end
-    lQ_out[m] = reshape(lQ_mats[m], (fill(K, m+1)...))
+    lQ_out[m] = reshape(lQ_mats[m], fill(K, m+1)...)
   end
 
   lQ_out
@@ -339,7 +339,7 @@ function rpost_lQ_mmtd(S::Vector{Int}, TT::Int,
 
   ## initialize
   lQ_mats = [ Matrix{Float64}(K, K^m) for m in 1:M ]
-  lQ_out = [ reshape(lQ_mats[m], (fill(K, m+1)...)) for m in 1:M ]
+  lQ_out = [ reshape(lQ_mats[m], fill(K, m+1)...) for m in 1:M ]
 
   N = counttrans_mmtd(S, TT, Z, ζ, λ_indx, R, M, K)
 
@@ -350,7 +350,7 @@ function rpost_lQ_mmtd(S::Vector{Int}, TT::Int,
       α1 = prior[m][j].α .+ Nmat[:,j]
       lQ_mats[m][:,j] = BayesInference.rSparseDirMix(α1, prior[m][j].β, true)
     end
-    lQ_out[m] = reshape(lQ_mats[m], (fill(K, m+1)...))
+    lQ_out[m] = reshape(lQ_mats[m], fill(K, m+1)...)
   end
 
   lQ_out
@@ -362,7 +362,7 @@ function rpost_lQ_mmtd(S::Vector{Int}, TT::Int, prior::Vector{Vector{SparseSBPri
 
   ## initialize
   lQ_mats = [ Matrix{Float64}(K, K^m) for m in 1:M ]
-  lQ_out = [ reshape(lQ_mats[m], (fill(K, m+1)...)) for m in 1:M ]
+  lQ_out = [ reshape(lQ_mats[m], fill(K, m+1)...) for m in 1:M ]
 
   N = counttrans_mmtd(S, TT, Z, ζ, λ_indx, R, M, K)
 
@@ -373,7 +373,7 @@ function rpost_lQ_mmtd(S::Vector{Int}, TT::Int, prior::Vector{Vector{SparseSBPri
       lQ_mats[m][:,j] = log.( BayesInference.rpost_sparseStickBreak(Nmat[:,j],
       prior[m][j].p1, prior[m][j].α, prior[m][j].μ, prior[m][j].M)[1] )
     end
-    lQ_out[m] = reshape(lQ_mats[m], (fill(K, m+1)...))
+    lQ_out[m] = reshape(lQ_mats[m], fill(K, m+1)...)
   end
 
   lQ_out
@@ -383,7 +383,7 @@ function rpost_lQ_mmtd!(S::Vector{Int}, TT::Int, prior::Vector{Vector{SparseSBPr
 
   ## initialize
   lQ_mats = [ Matrix{Float64}(K, K^m) for m in 1:M ]
-  lQ_out = [ reshape(lQ_mats[m], (fill(K, m+1)...)) for m in 1:M ]
+  lQ_out = [ reshape(lQ_mats[m], fill(K, m+1)...) for m in 1:M ]
 
   N = counttrans_mmtd(S, TT, Z, ζ, λ_indx, R, M, K)
 
@@ -401,7 +401,7 @@ function rpost_lQ_mmtd!(S::Vector{Int}, TT::Int, prior::Vector{Vector{SparseSBPr
           prior[m][j].p1_now = copy(p1_now)
 
       end
-      lQ_out[m] = reshape(lQ_mats[m], (fill(K, m+1)...))
+      lQ_out[m] = reshape(lQ_mats[m], fill(K, m+1)...)
   end
 
   lQ_out
@@ -414,8 +414,8 @@ function rpost_Z_mmtd(S::Vector{Int}, TT::Int,
   lΛ::Vector{Float64}, ζ::Matrix{Int}, lQ::Vector{Array{Float64}},
   λ_indx::Tuple, R::Int, M::Int)
 
-  Z_out = Vector{Float64}(TT-R)
-  lw = Vector{Float64}(M)
+  Z_out = Vector{Float64}(undef, TT-R)
+  lw = Vector{Float64}(undef, M)
 
   for i in 1:(TT-R)
     tt = i + R
@@ -445,7 +445,7 @@ function rpost_ζ_mmtd(S::Vector{Int}, TT::Int,
     Slagrev_now = S[range(tt-1, -1, R)]
     for m in 1:M
       if Z[i] == m
-        lp = Vector{Float64}(λ_lens[m])
+        lp = Vector{Float64}(undef, λ_lens[m])
         for j in 1:λ_lens[m]
           lp[j] = lλ[m][j] + lQ[m][ append!([copy(S[tt])], copy(Slagrev_now[λ_indx[1][m][j]]))... ]
         end
@@ -486,8 +486,8 @@ function rpost_ζ_mtd_marg(S::Vector{Int}, ζ_old::Vector{Int},
     kuse = unique(Slagrev_now)
     nkuse = length(kuse)
 
-    lmvbn0 = [ lmvbeta( α1_Q[:,kk] ) for kk in kuse ]
-    lmvbn1 = [ lmvbeta( α1_Q[:,kk] + eSt ) for kk in kuse ]
+    lmvbn0 = [ SparseProbVec.lmvbeta( α1_Q[:,kk] ) for kk in kuse ]
+    lmvbn1 = [ SparseProbVec.lmvbeta( α1_Q[:,kk] + eSt ) for kk in kuse ]
 
     lw = zeros(Float64, R)
 
@@ -659,7 +659,7 @@ function MetropIndep_λζ(S::Vector{Int}, lλ_old::Vector{Float64}, ζ_old::Vect
     # α_Q::Float64, p1_Q::Float64, M_Q::Float64, μ_Q::Float64,
     TT::Int, R::Int, K::Int)
 
-  lλ_cand = rDirichlet(prior_λ, true)
+  lλ_cand = SparseProbVec.rDirichlet(prior_λ, true)
   λ_cand = exp.(lλ_cand)
   ζ_cand = [ StatsBase.sample( Weights(λ_cand) ) for i in 1:(TT-R) ]
 
@@ -701,8 +701,8 @@ function MetropIndep_λζ(S::Vector{Int}, lλ_old::Vector{Float64}, ζ_old::Vect
   N_cand = counttrans_mtd(S, TT, ζ_cand, R, K) # rows are tos, cols are froms
   N_old = counttrans_mtd(S, TT, ζ_old, R, K) # rows are tos, cols are froms
 
-  lDirmarg_cand = [ BayesInference.lmvbeta(N_cand[:,kk] .+ prior_Q[:,kk]) for kk in 1:K ] # can ignore denominator
-  lDirmarg_old = [ BayesInference.lmvbeta(N_old[:,kk] .+ prior_Q[:,kk]) for kk in 1:K ]
+  lDirmarg_cand = [ SparseProbVec.lmvbeta(N_cand[:,kk] .+ prior_Q[:,kk]) for kk in 1:K ] # can ignore denominator
+  lDirmarg_old = [ SparseProbVec.lmvbeta(N_old[:,kk] .+ prior_Q[:,kk]) for kk in 1:K ]
 
   ll_cand = sum( lDirmarg_cand )
   ll_old = sum( lDirmarg_old )
@@ -723,15 +723,15 @@ function MetropIndep_λζ(S::Vector{Int}, lλ_old::Vector{Float64}, ζ_old::Vect
     prior_Q::Matrix{Float64},
     TT::Int, R::Int, K::Int)
 
-  lλ_cand = rDirichlet(prior_λ, true)
+  lλ_cand = SparseProbVec.rDirichlet(prior_λ, true)
   λ_cand = exp.(lλ_cand)
   ζ_cand = [ StatsBase.sample( Weights(λ_cand) ) for i in 1:(TT-R) ]
 
   N_cand = counttrans_mtd(S, TT, ζ_cand, R, K) # rows are tos, cols are froms
   N_old = counttrans_mtd(S, TT, ζ_old, R, K) # rows are tos, cols are froms
 
-  lDirmarg_cand = [ BayesInference.lmvbeta(N_cand[:,kk] .+ prior_Q[:,kk]) for kk in 1:K ] # can ignore denominator
-  lDirmarg_old = [ BayesInference.lmvbeta(N_old[:,kk] .+ prior_Q[:,kk]) for kk in 1:K ]
+  lDirmarg_cand = [ SparseProbVec.lmvbeta(N_cand[:,kk] .+ prior_Q[:,kk]) for kk in 1:K ] # can ignore denominator
+  lDirmarg_old = [ SparseProbVec.lmvbeta(N_old[:,kk] .+ prior_Q[:,kk]) for kk in 1:K ]
 
   ll_cand = sum( lDirmarg_cand )
   ll_old = sum( lDirmarg_old )
