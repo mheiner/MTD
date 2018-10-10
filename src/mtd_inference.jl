@@ -25,7 +25,7 @@ mutable struct ModMTD
   state::ParamsMTD
   iter::Int
 
-  ModMMTD(R, K, TT, S, prior, state) = new(R, K, TT, S, prior, state, 0)
+  ModMTD(R, K, TT, S, prior, state) = new(R, K, TT, S, prior, state, 0)
 end
 
 ## Keep around for compatibility with old simulations
@@ -51,7 +51,7 @@ mutable struct PostSimsMTD
   # PostSimsMMTD(Λ, λ, Q, Z, ζ) = new(Λ, λ, Q, Z, ζ, nothing, nothing)
   # PostSimsMMTD(Λ, λ, Q, Z, ζ, p1λ) = new(Λ, λ, Q, Z, ζ, p1λ, nothing)
   # PostSimsMMTD(Λ, λ, Q, Z, ζ, p1Q) = new(Λ, λ, Q, Z, ζ, nothing, p1Q)
-  PostSimsMMTD(λ, Q, ζ, p1λ, p1Q) = new(λ, Q, ζ, p1λ, p1Q)
+  PostSimsMTD(λ, Q, ζ, p1λ, p1Q) = new(λ, Q, ζ, p1λ, p1Q)
 end
 
 
@@ -194,7 +194,7 @@ function counttrans_mtd(S::Vector{Int}, TT::Int, ζ::Vector{Int},
 end
 
 """
-    rpost_lQ_mmtd(S, TT, prior, ζ, R, K)
+    rpost_lQ_mtd(S, TT, prior, ζ, R, K)
 """
 function rpost_lQ_mtd(S::Vector{Int}, TT::Int, prior::Matrix{Float64},
     ζ::Vector{Int}, R::Int, K::Int)
@@ -269,7 +269,7 @@ end
 
 
 """
-    rpost_ζ_mmtd(S, TT, lλ, lQ, R, K)
+    rpost_ζ_mtd(S, TT, lλ, lQ, R, K)
 """
 function rpost_ζ_mtd(S::Vector{Int}, TT::Int,
   lλ::Vector{Float64}, lQ::Array{Float64,2},
