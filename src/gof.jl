@@ -3,7 +3,7 @@
 export lossL1, meanForecLoss_MTD, meanForecLoss_MMTD;
 
 function lossL1(x::Vector{Float64}, y::Vector{Float64})
-    assert(length(x)==length(y))
+    @assert length(x)==length(y)
     sum( abs.( x .- y ) )
 end
 
@@ -17,7 +17,7 @@ end
 
 
 function meanForecLoss_MTD(S::Vector{Int}, tprime::Vector{Int},
-    lossFn::Function, sims::MTD.PostSimsMMTD, TT::Int, R::Int, K::Int,
+    lossFn::Function, sims::PostSimsMMTD, TT::Int, R::Int, K::Int,
     simind::Vector{Int})
 
     nsim = length(simind)
@@ -52,7 +52,7 @@ function meanForecLoss_MTD(S::Vector{Int}, tprime::Vector{Int},
 end
 function meanForecLoss_MTD(y::Vector{Int}, X::Matrix{Int}, P::Matrix{Float64},
     nprime::Int,
-    lossFn::Function, sims::MTD.PostSimsMMTD, TT::Int, R::Int, K::Int,
+    lossFn::Function, sims::PostSimsMMTD, TT::Int, R::Int, K::Int,
     simind::Vector{Int})
 
     nsim = length(simind)
@@ -90,7 +90,7 @@ end
 
 
 function meanForecLoss_MMTD(S::Vector{Int}, tprime::Vector{Int},
-    lossFn::Function, sims::MTD.PostSimsMMTD, TT::Int, R::Int, M::Int, K::Int,
+    lossFn::Function, sims::PostSimsMMTD, TT::Int, R::Int, M::Int, K::Int,
     simind::Vector{Int}, λ_indx::λindxMMTD)
 
     nsim = length(simind)
@@ -130,7 +130,7 @@ function meanForecLoss_MMTD(S::Vector{Int}, tprime::Vector{Int},
 end
 function meanForecLoss_MMTD(y::Vector{Int}, X::Matrix{Int}, P::Matrix{Float64},
     nprime::Int,
-    lossFn::Function, sims::MTD.PostSimsMMTD, TT::Int, R::Int, M::Int, K::Int,
+    lossFn::Function, sims::PostSimsMMTD, TT::Int, R::Int, M::Int, K::Int,
     simind::Vector{Int}, λ_indx::λindxMMTD)
 
     nsim = length(simind)

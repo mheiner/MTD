@@ -760,114 +760,113 @@ function mcmc_mmtd!(model::ModMMTD, n_keep::Int, save::Bool=true,
 
     ## output files
     report_file = open(report_filename, "a+")
-    write(report_file, "Commencing MCMC at $(now())
-    for $(n_keep * thin) iterations.\n")
+    write(report_file, "Commencing MCMC at $(now()) for $(n_keep * thin) iterations.\n")
 
-        if save
-            monitor_len = length(monitor_indx)
-            sims = PostSimsMMTD( Matrix{Float64}(n_keep, model.M), # Λ
-            [ Matrix{Float64}(n_keep, model.λ_indx[2][m]) for m in 1:model.M ], # λ
-            [ Matrix{Float64}(n_keep, model.K^(m+1)) for m in 1:model.M ], # Q
-            Matrix{Int}(n_keep, monitor_len), # Z
-            [ Matrix{Int}(n_keep, monitor_len) for m in 1:model.M ], # ζ
-            Matrix{Float64}(n_keep, model.M), # p1λ
-            [ Matrix{Float64}(n_keep, model.K^m) for m in 1:model.M ] #= p1Q =# )
-        end
-
-        ## flags
-        Mbig_flag = model.M > 1
-        λSBMp_flag = mutable structof(model.prior.λ) == Vector{BayesInference.SparseSBPriorP}
-        λSBMfull_flag = mutable structof(model.prior.λ) == Vector{BayesInference.SparseSBPriorFull}
-        QSBMp_flag = mutable structof(model.prior.Q) == Vector{Vector{BayesInference.SparseSBPriorP}}
-        QSBMfull_flag = mutable structof(model.prior.Q) == Vector{Vector{BayesInference.SparseSBPriorFull}}
-
-
-        ## sampling
-        for i in 1:n_keep
-            for j in 1:thin
-
-                jmpstart = (model.iter % jmpstart_iter == 0)
-
-                if Mbig_flag
-
-                    model.state.Z = rpost_Z_mmtd(model.S, model.TT,
-                    model.state.lΛ, model.state.ζ, model.state.lQ, model.λ_indx,
-                    model.R, model.M)
-
-                    model.state.lΛ = rpost_lΛ_mmtd(model.prior.Λ, model.state.Z, model.M)
-
-                    model.state.ζ = rpost_ζ_mmtd(model.S, model.TT,
-                    model.state.lλ, model.state.Z, model.state.lQ,
-                    model.λ_indx, model.R, model.M, model.K)
-
-                else
-
-                    if jmpstart
-
-                        model.state.lλ[1], model.state.ζ[:,1] = MetropIndep_λζ(model.S,
-                        model.state.lλ[1], model.state.ζ[:,1], model.prior.λ[1],
-                        model.prior.Q[1],
-                        model.TT, model.R, model.K)
-
-                    else
-
-                        model.state.ζ[:,1] = rpost_ζ_mtd_marg(model.S, model.state.ζ[:,1],
-                        model.prior.Q[1], model.state.lλ[1],
-                        model.TT, model.R, model.K)
-
-                        if λSBMp_flag || λSBMfull_flag
-                            model.state.lλ = rpost_lλ_mmtd!(model.prior.λ, model.state.ζ,
-                            model.λ_indx[2], model.M)
-                        else
-                            model.state.lλ = rpost_lλ_mmtd(model.prior.λ, model.state.ζ,
-                            model.λ_indx[2], model.M)
-                        end
-
-                    end
-
-                end
-
-                if QSBMp_flag || QSBMfull_flag
-                    model.state.lQ = rpost_lQ_mmtd!(model.S, model.TT, model.prior.Q,
-                    model.state.Z, model.state.ζ, model.λ_indx,
-                    model.R, model.M, model.K)
-                else
-                    model.state.lQ = rpost_lQ_mmtd(model.S, model.TT, model.prior.Q,
-                    model.state.Z, model.state.ζ, model.λ_indx,
-                    model.R, model.M, model.K)
-                end
-
-                model.iter += 1
-                if model.iter % report_freq == 0
-                    write(report_file, "Iter $(model.iter) at $(now())\n")
-                end
-            end
-
-            if save
-                @inbounds sims.Λ[i,:] = exp.( model.state.lΛ )
-                @inbounds sims.Z[i,:] = copy(model.state.Z[monitor_indx])
-                for m in 1:model.M
-                    @inbounds sims.λ[m][i,:] = exp.( model.state.lλ[m] )
-                    @inbounds sims.Q[m][i,:] = exp.( vec( model.state.lQ[m] ) )
-                    @inbounds sims.ζ[m][i,:] = copy(model.state.ζ[monitor_indx,m])
-                    if λSBMp_flag || λSBMfull_flag
-                        sims.p1λ[i,m] = copy(model.prior.λ[m].p1_now)
-                    end
-                    if QSBMp_flag || QSBMfull_flag
-                        for kk in 1:model.K^m
-                            sims.p1Q[m][i,kk] = copy( model.prior.Q[m][kk].p1_now )
-                        end
-                    end
-                end
-            end
-        end
-
-        close(report_file)
-
-        if save
-            return sims
-        else
-            return model.iter
-        end
-
+    if save
+        monitor_len = length(monitor_indx)
+        sims = PostSimsMMTD( Matrix{Float64}(n_keep, model.M), # Λ
+        [ Matrix{Float64}(n_keep, model.λ_indx[2][m]) for m in 1:model.M ], # λ
+        [ Matrix{Float64}(n_keep, model.K^(m+1)) for m in 1:model.M ], # Q
+        Matrix{Int}(n_keep, monitor_len), # Z
+        [ Matrix{Int}(n_keep, monitor_len) for m in 1:model.M ], # ζ
+        Matrix{Float64}(n_keep, model.M), # p1λ
+        [ Matrix{Float64}(n_keep, model.K^m) for m in 1:model.M ] #= p1Q =# )
     end
+
+    ## flags
+    Mbig_flag = model.M > 1
+    λSBMp_flag = mutable structof(model.prior.λ) == Vector{BayesInference.SparseSBPriorP}
+    λSBMfull_flag = mutable structof(model.prior.λ) == Vector{BayesInference.SparseSBPriorFull}
+    QSBMp_flag = mutable structof(model.prior.Q) == Vector{Vector{BayesInference.SparseSBPriorP}}
+    QSBMfull_flag = mutable structof(model.prior.Q) == Vector{Vector{BayesInference.SparseSBPriorFull}}
+
+
+    ## sampling
+    for i in 1:n_keep
+        for j in 1:thin
+
+            jmpstart = (model.iter % jmpstart_iter == 0)
+
+            if Mbig_flag
+
+                model.state.Z = rpost_Z_mmtd(model.S, model.TT,
+                model.state.lΛ, model.state.ζ, model.state.lQ, model.λ_indx,
+                model.R, model.M)
+
+                model.state.lΛ = rpost_lΛ_mmtd(model.prior.Λ, model.state.Z, model.M)
+
+                model.state.ζ = rpost_ζ_mmtd(model.S, model.TT,
+                model.state.lλ, model.state.Z, model.state.lQ,
+                model.λ_indx, model.R, model.M, model.K)
+
+            else
+
+                if jmpstart
+
+                    model.state.lλ[1], model.state.ζ[:,1] = MetropIndep_λζ(model.S,
+                    model.state.lλ[1], model.state.ζ[:,1], model.prior.λ[1],
+                    model.prior.Q[1],
+                    model.TT, model.R, model.K)
+
+                else
+
+                    model.state.ζ[:,1] = rpost_ζ_mtd_marg(model.S, model.state.ζ[:,1],
+                    model.prior.Q[1], model.state.lλ[1],
+                    model.TT, model.R, model.K)
+
+                    if λSBMp_flag || λSBMfull_flag
+                        model.state.lλ = rpost_lλ_mmtd!(model.prior.λ, model.state.ζ,
+                        model.λ_indx[2], model.M)
+                    else
+                        model.state.lλ = rpost_lλ_mmtd(model.prior.λ, model.state.ζ,
+                        model.λ_indx[2], model.M)
+                    end
+
+                end
+
+            end
+
+            if QSBMp_flag || QSBMfull_flag
+                model.state.lQ = rpost_lQ_mmtd!(model.S, model.TT, model.prior.Q,
+                model.state.Z, model.state.ζ, model.λ_indx,
+                model.R, model.M, model.K)
+            else
+                model.state.lQ = rpost_lQ_mmtd(model.S, model.TT, model.prior.Q,
+                model.state.Z, model.state.ζ, model.λ_indx,
+                model.R, model.M, model.K)
+            end
+
+            model.iter += 1
+            if model.iter % report_freq == 0
+                write(report_file, "Iter $(model.iter) at $(now())\n")
+            end
+        end
+
+        if save
+            @inbounds sims.Λ[i,:] = exp.( model.state.lΛ )
+            @inbounds sims.Z[i,:] = copy(model.state.Z[monitor_indx])
+            for m in 1:model.M
+                @inbounds sims.λ[m][i,:] = exp.( model.state.lλ[m] )
+                @inbounds sims.Q[m][i,:] = exp.( vec( model.state.lQ[m] ) )
+                @inbounds sims.ζ[m][i,:] = copy(model.state.ζ[monitor_indx,m])
+                if λSBMp_flag || λSBMfull_flag
+                    sims.p1λ[i,m] = copy(model.prior.λ[m].p1_now)
+                end
+                if QSBMp_flag || QSBMfull_flag
+                    for kk in 1:model.K^m
+                        sims.p1Q[m][i,kk] = copy( model.prior.Q[m][kk].p1_now )
+                    end
+                end
+            end
+        end
+    end
+
+    close(report_file)
+
+    if save
+        return sims
+    else
+        return model.iter
+    end
+
+end

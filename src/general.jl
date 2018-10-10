@@ -3,19 +3,18 @@
 export create_froms, count_trans_R, transTens_MLE, forecDist;
 
 ## expand.grid() from R
-# using Iterators
+# using Iterators # (this is part of Base as of Julia 1.0)
 # collect(product([1 2 3],[1 2]))
 
 function create_froms(K::UInt16, R::UInt16)
   x = UInt16(1):K
-  xx = collect(Iterators.product(repeated(x,Int(R))...))
-  (xx, length(xx))
+  xx = collect(Iterators.product(Iterators.repeated(x,Int(R))...))
+  (vec(xx), length(xx))
 end
-
 function create_froms(K::Int, R::Int)
   x = 1:K
-  xx = collect(Iterators.product(repeated(x,R)...))
-  (xx, length(xx))
+  xx = collect(Iterators.product(Iterators.repeated(x,R)...))
+  (vec(xx), length(xx))
 end
 
 
@@ -69,11 +68,11 @@ Returns a tensor with counts of observed `R`th order transitions in `S`
 ```
 """
 function count_trans_R(S::Vector{Int}, K::Int, R::Int)
-    assert(minimum(S) >= 1 && maximum(S) <= K)
-    N = zeros(Int, (fill(K,R+1)...))
+    @assert minimum(S) >= 1 && maximum(S) <= K
+    N = zeros(Int, fill(K,R+1)...)
 
     for tt in (R+1):length(S)
-      Srev_now = S[range(tt,-1,(R+1))]
+      Srev_now = S[range(tt, step=-1, length=(R+1))]
       N[(Srev_now)...] += 1
     end
 
@@ -97,12 +96,12 @@ Returns a tensor with estimated transition probabilities for `R`th order transit
 ```
 """
 function transTens_MLE(S::Vector{Int}, K::Int, R::Int)
-    assert(minimum(S) >= 1 && maximum(S) <= K)
+    @assert minimum(S) >= 1 && maximum(S) <= K
     N = count_trans_R(S, K, R)
-    N ./ sum(N, 1)
+    N ./ sum(N, dims=1)
 end
 function transTens_MLE(N::Union{Array{Float64}, Array{Int64}})
-    N ./ sum(N, 1)
+    N ./ sum(N, dims=1)
 end
 
 
@@ -124,7 +123,7 @@ Computes the forecast distribution given lagged values and parameters.
 function forecDist(Slagrev::Vector{Int}, λ::Vector{Float64}, Q::Matrix{Float64})
     K = size(Q)[1]
     R = size(λ)[1]
-    assert(size(Slagrev)[1] == R)
+    @assert size(Slagrev)[1] == R
     w = zeros(Float64, K)
     for k in 1:K
         for ℓ in 1:R
