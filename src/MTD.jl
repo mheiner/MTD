@@ -4,6 +4,7 @@ module MTD
 using Distributions
 using Combinatorics
 using StatsBase
+using Dates
 
 ## personal packages
 using BayesInference

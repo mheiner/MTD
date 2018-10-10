@@ -167,12 +167,12 @@ function rpost_lΛ_mmtd(prior::SparseDirMixPrior,
     Z::Vector{Int}, M::Int)
   Nz = StatsBase.counts(Z, 1:M)
   α1_Λ = prior.α + Nz
-  BayesInference.rSparseDirMix(α1_Λ, prior.β, true)
+  SparseProbVec.rSparseDirMix(α1_Λ, prior.β, true)
 end
 function rpost_lΛ_mmtd!(prior::SparseSBPriorFull,
     Z::Vector{Int}, M::Int)
 
-  lw_now, lz_now, ξ_now, prior.μ_now, prior.p1_now = BayesInference.rpost_sparseStickBreak(Z,
+  lw_now, lz_now, ξ_now, prior.μ_now, prior.p1_now = SparseProbVec.rpost_sparseStickBreak(Z,
     prior.p1_now, prior.η, prior.μ_now, prior.M, prior.a_p1,
     prior.b_p1, prior.a_μ, prior.b_μ, true)
 
@@ -209,7 +209,7 @@ function rpost_lλ_mmtd(prior::Vector{SparseDirMixPrior}, Zandζ::Matrix{Int},
     Zmindx = findall(Z .== m)
     Nζ = StatsBase.counts(ζ[Zmindx], 1:λ_lens[m])
     α1_λ = prior[m].α .+ Nζ
-    lλ_out[m] = BayesInference.rSparseDirMix(α1_λ, prior[m].β, true)
+    lλ_out[m] = SparseProbVec.rSparseDirMix(α1_λ, prior[m].β, true)
   end
 
   lλ_out
@@ -224,7 +224,7 @@ function rpost_lλ_mmtd(prior::Vector{SparseSBPrior}, Zandζ::Matrix{Int},
   for m in 1:M
     Zmindx = findall(Z .== m)
     Nζ = StatsBase.counts(ζ[Zmindx], 1:λ_lens[m])
-    lw_now, lz_now, ξ_now = BayesInference.rpost_sparseStickBreak(Nζ,
+    lw_now, lz_now, ξ_now = SparseProbVec.rpost_sparseStickBreak(Nζ,
         prior[m].p1, prior[m].η,
         prior[m].μ, prior[m].M, true )
 
@@ -243,7 +243,7 @@ function rpost_lλ_mmtd!(prior::Vector{SparseSBPriorP}, Zandζ::Matrix{Int},
   for m in 1:M
     Zmindx = findall(Z .== m)
     Nζ = StatsBase.counts(ζ[Zmindx], 1:λ_lens[m])
-    lw_now, lz_now, ξ_now, prior[m].p1_now = BayesInference.rpost_sparseStickBreak(Nζ,
+    lw_now, lz_now, ξ_now, prior[m].p1_now = SparseProbVec.rpost_sparseStickBreak(Nζ,
         prior[m].p1_now, prior[m].η, prior[m].μ, prior[m].M,
         prior[m].a_p1, prior[m].b_p1, true)
 
@@ -262,7 +262,7 @@ function rpost_lλ_mmtd!(prior::Vector{SparseSBPriorFull}, Zandζ::Matrix{Int},
   for m in 1:M
     Zmindx = findall(Z .== m)
     Nζ = StatsBase.counts(ζ[Zmindx], 1:λ_lens[m])
-    lw_now, lz_now, ξ_now, prior[m].μ_now, prior[m].p1_now = BayesInference.rpost_sparseStickBreak(Nζ,
+    lw_now, lz_now, ξ_now, prior[m].μ_now, prior[m].p1_now = SparseProbVec.rpost_sparseStickBreak(Nζ,
         prior[m].p1_now, prior[m].η, prior[m].μ_now, prior[m].M,
         prior[m].a_p1, prior[m].b_p1, prior[m].a_μ, prior[m].b_μ, true)
 
@@ -385,7 +385,7 @@ function rpost_lQ_mmtd(S::Vector{Int}, TT::Int,
     Nmat = reshape(N[m], (K, ncol))
     for j in 1:ncol
       α1 = prior_vec[m][j].α .+ Nmat[:,j]
-      lQ_mats[m][:,j] = BayesInference.rSparseDirMix(α1, prior_vec[m][j].β, true)
+      lQ_mats[m][:,j] = SparseProbVec.rSparseDirMix(α1, prior_vec[m][j].β, true)
     end
     lQ_out[m] = reshape(lQ_mats[m], fill(K, m+1)...)
   end
@@ -407,7 +407,7 @@ function rpost_lQ_mmtd(S::Vector{Int}, TT::Int, prior::Vector{<:Array{SparseSBPr
     ncol = K^m
     Nmat = reshape(N[m], (K, ncol))
     for j in 1:ncol
-      lQ_mats[m][:,j] = BayesInference.rpost_sparseStickBreak(Nmat[:,j],
+      lQ_mats[m][:,j] = SparseProbVec.rpost_sparseStickBreak(Nmat[:,j],
         prior_vec[m][j].p1, prior_vec[m][j].α, prior_vec[m][j].μ, prior_vec[m][j].M, true)[1]
     end
     lQ_out[m] = reshape(lQ_mats[m], fill(K, m+1)...)
@@ -431,7 +431,7 @@ function rpost_lQ_mmtd!(S::Vector{Int}, TT::Int, prior::Vector{<:Array{SparseSBP
       Nmat = reshape(N[m], (K, ncol))
       for j in 1:ncol
 
-          lw_now, lz_now, ξ_now, p1_now = BayesInference.rpost_sparseStickBreak(
+          lw_now, lz_now, ξ_now, p1_now = SparseProbVec.rpost_sparseStickBreak(
             Nmat[:,j], prior_vec[m][j].p1_now,
             prior_vec[m][j].α, prior_vec[m][j].μ, prior_vec[m][j].M,
             prior_vec[m][j].a_p1, prior_vec[m][j].b_p1, true )
@@ -912,7 +912,7 @@ function mcmc_mmtd!(model::ModMMTD, n_keep::Int, save::Bool=true,
 
     ## output files
     report_file = open(report_filename, "a+")
-    write(report_file, "Commencing MCMC at $(now()) for $(n_keep * thin) iterations.\n")
+    write(report_file, "Commencing MCMC at $(Dates.now()) for $(n_keep * thin) iterations.\n")
 
     if save
         monitor_len = length(monitor_indx)
@@ -925,10 +925,10 @@ function mcmc_mmtd!(model::ModMMTD, n_keep::Int, save::Bool=true,
     end
 
     ## flags
-    λSBMp_flag = typeof(model.prior.λ) == Vector{BayesInference.SparseSBPriorP}
-    λSBMfull_flag = typeof(model.prior.λ) == Vector{BayesInference.SparseSBPriorFull}
-    QSBMp_flag = typeof(model.prior.Q) <: Vector{<:Array{BayesInference.SparseSBPriorP}}
-    QSBMfull_flag = typeof(model.prior.Q) <: Vector{<:Array{BayesInference.SparseSBPriorFull}}
+    λSBMp_flag = typeof(model.prior.λ) == Vector{SparseProbVec.SparseSBPriorP}
+    λSBMfull_flag = typeof(model.prior.λ) == Vector{SparseProbVec.SparseSBPriorFull}
+    QSBMp_flag = typeof(model.prior.Q) <: Vector{<:Array{SparseProbVec.SparseSBPriorP}}
+    QSBMfull_flag = typeof(model.prior.Q) <: Vector{<:Array{SparseProbVec.SparseSBPriorFull}}
 
     ## sampling
     for i in 1:n_keep
@@ -979,7 +979,7 @@ function mcmc_mmtd!(model::ModMMTD, n_keep::Int, save::Bool=true,
 
             model.iter += 1
             if model.iter % report_freq == 0
-                write(report_file, "Iter $(model.iter) at $(now())\n")
+                write(report_file, "Iter $(model.iter) at $(Dates.now())\n")
             end
         end
 
