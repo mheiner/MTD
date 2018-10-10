@@ -23,10 +23,9 @@ mutable struct ModMTD
   S::Vector{Int}
   prior::PriorMTD
   state::ParamsMTD
-  λ_indx::Tuple
   iter::Int
 
-  ModMMTD(R, K, TT, S, prior, state, λ_indx) = new(R, K, TT, S, prior, state, λ_indx, 0)
+  ModMMTD(R, K, TT, S, prior, state) = new(R, K, TT, S, prior, state, 0)
 end
 
 ## Keep around for compatibility with old simulations
