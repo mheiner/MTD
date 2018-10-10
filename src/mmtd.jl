@@ -508,7 +508,7 @@ function rpost_Zζ_marg(S::Vector{Int}, Zζ_old::Vector{Int}, λ_indx::λindxMMT
         lw[ℓ] = llikmarg_cand[ℓ] + lΛ[Zcand] + lλ[Zcand][ζcand]
     end
 
-    w = exp.( lw - maximum(lw) )
+    w = exp.( lw .- maximum(lw) )
     newindx = StatsBase.sample(Weights( w ))
     Zζ_out[i] = copy(newindx)
 
@@ -580,7 +580,7 @@ function rpost_Zζ_marg(S::Vector{Int}, Zζ_old::Vector{Int},
         lw[ℓ] = llikmarg_cand[ℓ] + lΛ[Zcand] + lλ[Zcand][ζcand]
     end
 
-    w = exp.( lw - maximum(lw) )
+    w = exp.( lw .- maximum(lw) )
     newindx = StatsBase.sample(Weights( w ))
     Zζ_out[i] = copy(newindx)
 
@@ -716,7 +716,7 @@ function rpost_Zζ_marg(S::Vector{Int}, Zζ_old::Vector{Int},
             end
       end
 
-      w = exp.( lw - maximum(lw) )
+      w = exp.( lw .- maximum(lw) )
       newindx = StatsBase.sample(Weights( w ))
       Zζ_out[i] = copy(newindx)
 
