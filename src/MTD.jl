@@ -1,10 +1,10 @@
 module MTD
 
 ## distributed packages
-using Distributions
 using Combinatorics
-using StatsBase
 using Dates
+using Distributions
+using StatsBase
 
 ## personal packages
 using SparseProbVec
