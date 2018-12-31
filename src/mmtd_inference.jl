@@ -97,11 +97,11 @@ function sim_mmtd(TT::Int, nburn::Int, R::Int, M::Int, K::Int, λ_indx::λindxMM
 
   for tt in (R+1):(Nsim)
     i = tt - R
-    Slagrev_now = copy(S[range(tt-1, step=-1, length=R)])
-    pvec = copy( Q[Z[i]][:, Slagrev_now[λ_indx.indxs[Z[i]][ζ[i,Z[i]]]]...] )
+    Slagrev_now = deepcopy(S[range(tt-1, step=-1, length=R)])
+    pvec = deepcopy( Q[Z[i]][:, Slagrev_now[λ_indx.indxs[Z[i]][ζ[i,Z[i]]]]...] )
     if Xtras
-        Pvecs[tt,:] = copy(pvec)
-        # Slagrevs[tt,:] = copy(Slagrev_now)
+        Pvecs[tt,:] = deepcopy(pvec)
+        # Slagrevs[tt,:] = deepcopy(Slagrev_now)
     end
     S[tt] = StatsBase.sample(Weights( pvec ))
   end
@@ -186,8 +186,8 @@ function rpost_lλ_mmtd(α0_λ::Vector{Vector{Float64}}, Zandζ::Matrix{Int},
   λ_lens::Vector{Int}, M::Int)
 
   lλ_out = [ Vector{Float64}(undef, λ_lens[m]) for m in 1:M ]
-  Z = copy(Zandζ[:,1])
-  ζ = copy(Zandζ[:,2])
+  Z = deepcopy(Zandζ[:,1])
+  ζ = deepcopy(Zandζ[:,2])
 
   for m in 1:M
     Zmindx = findall(Z .== m)
@@ -202,8 +202,8 @@ function rpost_lλ_mmtd(prior::Vector{SparseDirMixPrior}, Zandζ::Matrix{Int},
   λ_lens::Vector{Int}, M::Int)
 
   lλ_out = [ Vector{Float64}(undef, λ_lens[m]) for m in 1:M ]
-  Z = copy(Zandζ[:,1])
-  ζ = copy(Zandζ[:,2])
+  Z = deepcopy(Zandζ[:,1])
+  ζ = deepcopy(Zandζ[:,2])
 
   for m in 1:M
     Zmindx = findall(Z .== m)
@@ -218,8 +218,8 @@ function rpost_lλ_mmtd(prior::Vector{SparseSBPrior}, Zandζ::Matrix{Int},
   λ_lens::Vector{Int}, M::Int)
 
   lλ_out = [ Vector{Float64}(undef, λ_lens[m]) for m in 1:M ]
-  Z = copy(Zandζ[:,1])
-  ζ = copy(Zandζ[:,2])
+  Z = deepcopy(Zandζ[:,1])
+  ζ = deepcopy(Zandζ[:,2])
 
   for m in 1:M
     Zmindx = findall(Z .== m)
@@ -228,7 +228,7 @@ function rpost_lλ_mmtd(prior::Vector{SparseSBPrior}, Zandζ::Matrix{Int},
         prior[m].p1, prior[m].η,
         prior[m].μ, prior[m].M, true )
 
-    lλ_out[m] = copy(lw_now)
+    lλ_out[m] = deepcopy(lw_now)
   end
 
   lλ_out
@@ -237,8 +237,8 @@ function rpost_lλ_mmtd!(prior::Vector{SparseSBPriorP}, Zandζ::Matrix{Int},
   λ_lens::Vector{Int}, M::Int)
 
   lλ_out = [ Vector{Float64}(undef, λ_lens[m]) for m in 1:M ]
-  Z = copy(Zandζ[:,1])
-  ζ = copy(Zandζ[:,2])
+  Z = deepcopy(Zandζ[:,1])
+  ζ = deepcopy(Zandζ[:,2])
 
   for m in 1:M
     Zmindx = findall(Z .== m)
@@ -247,7 +247,7 @@ function rpost_lλ_mmtd!(prior::Vector{SparseSBPriorP}, Zandζ::Matrix{Int},
         prior[m].p1_now, prior[m].η, prior[m].μ, prior[m].M,
         prior[m].a_p1, prior[m].b_p1, true)
 
-    lλ_out[m] = copy(lw_now)
+    lλ_out[m] = deepcopy(lw_now)
   end
 
   lλ_out
@@ -256,8 +256,8 @@ function rpost_lλ_mmtd!(prior::Vector{SparseSBPriorFull}, Zandζ::Matrix{Int},
   λ_lens::Vector{Int}, M::Int)
 
   lλ_out = [ Vector{Float64}(undef, λ_lens[m]) for m in 1:M ]
-  Z = copy(Zandζ[:,1])
-  ζ = copy(Zandζ[:,2])
+  Z = deepcopy(Zandζ[:,1])
+  ζ = deepcopy(Zandζ[:,2])
 
   for m in 1:M
     Zmindx = findall(Z .== m)
@@ -266,7 +266,7 @@ function rpost_lλ_mmtd!(prior::Vector{SparseSBPriorFull}, Zandζ::Matrix{Int},
         prior[m].p1_now, prior[m].η, prior[m].μ_now, prior[m].M,
         prior[m].a_p1, prior[m].b_p1, prior[m].a_μ, prior[m].b_μ, true)
 
-    lλ_out[m] = copy(lw_now)
+    lλ_out[m] = deepcopy(lw_now)
   end
 
   lλ_out
@@ -294,8 +294,8 @@ end
 function counttrans_mmtd(S::Vector{Int}, TT::Int, Zandζ::Matrix{Int},
   λ_indx::λindxMMTD, R::Int, M::Int, K::Int)
 
-  Z = copy(Zandζ[:,1])
-  ζ = copy(Zandζ[:,2])
+  Z = deepcopy(Zandζ[:,1])
+  ζ = deepcopy(Zandζ[:,2])
 
   ## initialize
   N_out = [ zeros(Int, fill(K, m+1)...) for m in 1:M ]
@@ -304,7 +304,7 @@ function counttrans_mmtd(S::Vector{Int}, TT::Int, Zandζ::Matrix{Int},
   for tt in (R+1):(TT)
     Z_now = Z[tt-R]
     Slagrev_now = S[range(tt-1, step=-1, length=R)]
-    N_out[Z_now][append!( [copy(S[tt])], copy(Slagrev_now[ λ_indx.indxs[Z_now][ζ[tt-R]] ]) )...] += 1
+    N_out[Z_now][append!( [deepcopy(S[tt])], deepcopy(Slagrev_now[ λ_indx.indxs[Z_now][ζ[tt-R]] ]) )...] += 1
   end
 
   N_out
@@ -319,7 +319,7 @@ function rpost_lQ_mmtd(S::Vector{Int}, TT::Int, prior::Vector{<:Array{Float64}},
   λ_indx::λindxMMTD, R::Int, M::Int, K::Int)
 
   ## initialize
-  α0_Q = copy(prior) # vector of arrays
+  α0_Q = deepcopy(prior) # vector of arrays
   lQ_mats = [ Matrix{Float64}(undef, K, K^m) for m in 1:M ]
   lQ_out = [ reshape(lQ_mats[m], fill(K, m+1)...) for m in 1:M ]
 
@@ -406,8 +406,8 @@ function rpost_lQ_mmtd!(S::Vector{Int}, TT::Int, prior::Vector{<:Array{SparseSBP
             prior_vec[m][j].α, prior_vec[m][j].μ, prior_vec[m][j].M,
             prior_vec[m][j].a_p1, prior_vec[m][j].b_p1, true )
 
-          lQ_mats[m][:,j] = copy(lw_now)
-          prior_vec[m][j].p1_now = copy(p1_now)
+          lQ_mats[m][:,j] = deepcopy(lw_now)
+          prior_vec[m][j].p1_now = deepcopy(p1_now)
 
       end
       lQ_out[m] = reshape(lQ_mats[m], fill(K, m+1)...)
@@ -430,10 +430,10 @@ function rpost_Zζ_marg(S::Vector{Int}, Zζ_old::Vector{Int}, λ_indx::λindxMMT
     lλ::Vector{Vector{Float64}},
     TT::Int, R::Int, M::Int, K::Int)
 
-  α0_Q = copy(prior_Q) # vector of arrays
+  α0_Q = deepcopy(prior_Q) # vector of arrays
   # α0_Qarrays = [ reshape(α0_Q[m], fill(K, m+1)...) for m in 1:M ]
 
-  Zζ_out = copy(Zζ_old)
+  Zζ_out = deepcopy(Zζ_old)
   Zandζ_now = ZζtoZandζ(Zζ_out, λ_indx) # won't get updated
 
   ## calculate current log marginal likelihood
@@ -454,12 +454,12 @@ function rpost_Zζ_marg(S::Vector{Int}, Zζ_old::Vector{Int}, λ_indx::λindxMMT
     tt = i + R
     Slagrev_now = S[range(tt-1, step=-1, length=R)]
 
-    # Zold, ζold = copy(Zandζ_out[i,1]), copy(Zandζ_out[i,2])
-    Zold, ζold = copy(λ_indx.Zζindx[Zζ_out[i],1]), copy(λ_indx.Zζindx[Zζ_out[i],2])
+    # Zold, ζold = deepcopy(Zandζ_out[i,1]), deepcopy(Zandζ_out[i,2])
+    Zold, ζold = deepcopy(λ_indx.Zζindx[Zζ_out[i],1]), deepcopy(λ_indx.Zζindx[Zζ_out[i],2])
     eSt = [ 1.0 * (kk==S[tt]) for kk in 1:K ]
 
     # remove S_t from llikmarg
-    SlagrevZζnow = copy(Slagrev_now[ λ_indx.indxs[Zold][ζold] ])
+    SlagrevZζnow = deepcopy(Slagrev_now[ λ_indx.indxs[Zold][ζold] ])
     llikmarg -= SparseProbVec.lmvbeta( α1_Q[Zold][:,SlagrevZζnow...] )
     α1_Q[Zold][:,SlagrevZζnow...] -= eSt
     llikmarg += SparseProbVec.lmvbeta( α1_Q[Zold][:,SlagrevZζnow...] )
@@ -469,8 +469,8 @@ function rpost_Zζ_marg(S::Vector{Int}, Zζ_old::Vector{Int}, λ_indx::λindxMMT
     lw = zeros(Float64, λ_indx.nZζ)
 
     for ℓ in 1:λ_indx.nZζ
-        Zcand, ζcand = copy(λ_indx.Zζindx[ℓ,1]), copy(λ_indx.Zζindx[ℓ,2])
-        SlagrevZζnow = copy(Slagrev_now[ λ_indx.indxs[Zcand][ζcand] ])
+        Zcand, ζcand = deepcopy(λ_indx.Zζindx[ℓ,1]), deepcopy(λ_indx.Zζindx[ℓ,2])
+        SlagrevZζnow = deepcopy(Slagrev_now[ λ_indx.indxs[Zcand][ζcand] ])
 
         llikmarg_cand[ℓ] -= SparseProbVec.lmvbeta( α1_Q[Zcand][:,SlagrevZζnow...] )
         llikmarg_cand[ℓ] += SparseProbVec.lmvbeta( α1_Q[Zcand][:,SlagrevZζnow...] .+ eSt )
@@ -480,12 +480,12 @@ function rpost_Zζ_marg(S::Vector{Int}, Zζ_old::Vector{Int}, λ_indx::λindxMMT
 
     w = exp.( lw .- maximum(lw) )
     newindx = StatsBase.sample(Weights( w ))
-    Zζ_out[i] = copy(newindx)
+    Zζ_out[i] = deepcopy(newindx)
 
     ## update running quantities
-    Znew, ζnew = copy(λ_indx.Zζindx[newindx,1]), copy(λ_indx.Zζindx[newindx,2])
+    Znew, ζnew = deepcopy(λ_indx.Zζindx[newindx,1]), deepcopy(λ_indx.Zζindx[newindx,2])
     α1_Q[Znew][:,Slagrev_now[ λ_indx.indxs[Znew][ζnew] ]...] += eSt
-    llikmarg = copy(llikmarg_cand[newindx])
+    llikmarg = deepcopy(llikmarg_cand[newindx])
 
   end
 
@@ -498,7 +498,7 @@ function rpost_Zζ_marg(S::Vector{Int}, Zζ_old::Vector{Int},
     lλ::Vector{Vector{Float64}},
     TT::Int, R::Int, M::Int, K::Int)
 
-  Zζ_out = copy(Zζ_old)
+  Zζ_out = deepcopy(Zζ_old)
   Zandζ_now = ZζtoZandζ(Zζ_out, λ_indx) # won't get updated
   prior_Q_vec = [ reshape(prior_Q[m], (K^m)) for m in 1:M ]
 
@@ -518,11 +518,11 @@ function rpost_Zζ_marg(S::Vector{Int}, Zζ_old::Vector{Int},
     tt = i + R
     Slagrev_now = S[range(tt-1, step=-1, length=R)]
 
-    Zold, ζold = copy(λ_indx.Zζindx[Zζ_out[i],1]), copy(λ_indx.Zζindx[Zζ_out[i],2])
+    Zold, ζold = deepcopy(λ_indx.Zζindx[Zζ_out[i],1]), deepcopy(λ_indx.Zζindx[Zζ_out[i],2])
     eSt = [ 1*(kk==S[tt]) for kk in 1:K ]
 
     # remove S_t from llikmarg
-    SlagrevZζnow = copy(Slagrev_now[ λ_indx.indxs[Zold][ζold] ])
+    SlagrevZζnow = deepcopy(Slagrev_now[ λ_indx.indxs[Zold][ζold] ])
     llikmarg -= logSDMmarginal( N_now[Zold][:,SlagrevZζnow...],
                                 prior_Q[Zold][SlagrevZζnow...].α,
                                 prior_Q[Zold][SlagrevZζnow...].β )
@@ -537,8 +537,8 @@ function rpost_Zζ_marg(S::Vector{Int}, Zζ_old::Vector{Int},
     lw = zeros(Float64, λ_indx.nZζ)
 
     for ℓ in 1:λ_indx.nZζ
-        Zcand, ζcand = copy(λ_indx.Zζindx[ℓ,1]), copy(λ_indx.Zζindx[ℓ,2])
-        SlagrevZζnow = copy(Slagrev_now[ λ_indx.indxs[Zcand][ζcand] ])
+        Zcand, ζcand = deepcopy(λ_indx.Zζindx[ℓ,1]), deepcopy(λ_indx.Zζindx[ℓ,2])
+        SlagrevZζnow = deepcopy(Slagrev_now[ λ_indx.indxs[Zcand][ζcand] ])
 
         llikmarg_cand[ℓ] -= logSDMmarginal( N_now[Zcand][:,SlagrevZζnow...],
                                     prior_Q[Zcand][SlagrevZζnow].α,
@@ -552,12 +552,12 @@ function rpost_Zζ_marg(S::Vector{Int}, Zζ_old::Vector{Int},
 
     w = exp.( lw .- maximum(lw) )
     newindx = StatsBase.sample(Weights( w ))
-    Zζ_out[i] = copy(newindx)
+    Zζ_out[i] = deepcopy(newindx)
 
     ## update running quantities
-    Znew, ζnew = copy(λ_indx.Zζindx[newindx,1]), copy(λ_indx.Zζindx[newindx,2])
+    Znew, ζnew = deepcopy(λ_indx.Zζindx[newindx,1]), deepcopy(λ_indx.Zζindx[newindx,2])
     N_now[Znew][:,Slagrev_now[ λ_indx.indxs[Znew][ζnew] ]...] += eSt
-    llikmarg = copy(llikmarg_cand[newindx])
+    llikmarg = deepcopy(llikmarg_cand[newindx])
 
   end
 
@@ -570,7 +570,7 @@ function rpost_Zζ_marg(S::Vector{Int}, Zζ_old::Vector{Int},
     lλ::Vector{Vector{Float64}},
     TT::Int, R::Int, M::Int, K::Int)
 
-  Zζ_out = copy(Zζ_old)
+  Zζ_out = deepcopy(Zζ_old)
   Zandζ_now = ZζtoZandζ(Zζ_out, λ_indx) # won't get updated
   prior_Q_vec = [ reshape(prior_Q[m], (K^m)) for m in 1:M ]
 
@@ -610,11 +610,11 @@ function rpost_Zζ_marg(S::Vector{Int}, Zζ_old::Vector{Int},
       tt = i + R
       Slagrev_now = S[range(tt-1, step=-1, length=R)]
 
-      Zold, ζold = copy(λ_indx.Zζindx[Zζ_out[i],1]), copy(λ_indx.Zζindx[Zζ_out[i],2])
+      Zold, ζold = deepcopy(λ_indx.Zζindx[Zζ_out[i],1]), deepcopy(λ_indx.Zζindx[Zζ_out[i],2])
       eSt = [ 1*(kk==S[tt]) for kk in 1:K ]
 
       # remove S_t from llikmarg
-      SlagrevZζnow = copy(Slagrev_now[ λ_indx.indxs[Zold][ζold] ])
+      SlagrevZζnow = deepcopy(Slagrev_now[ λ_indx.indxs[Zold][ζold] ])
 
       if SBM_flag
           llikmarg -= logSBMmarginal( N_now[Zold][:,SlagrevZζnow...],
@@ -650,8 +650,8 @@ function rpost_Zζ_marg(S::Vector{Int}, Zζ_old::Vector{Int},
 
       if SBM_flag
           for ℓ in 1:λ_indx.nZζ
-              Zcand, ζcand = copy(λ_indx.Zζindx[ℓ,1]), copy(λ_indx.Zζindx[ℓ,2])
-              SlagrevZζnow = copy(Slagrev_now[ λ_indx.indxs[Zcand][ζcand] ])
+              Zcand, ζcand = deepcopy(λ_indx.Zζindx[ℓ,1]), deepcopy(λ_indx.Zζindx[ℓ,2])
+              SlagrevZζnow = deepcopy(Slagrev_now[ λ_indx.indxs[Zcand][ζcand] ])
 
               llikmarg_cand[ℓ] -= logSBMmarginal( N_now[Zcand][:,SlagrevZζnow...],
                                                   prior_Q[Zcand][SlagrevZζnow...].p1,
@@ -668,8 +668,8 @@ function rpost_Zζ_marg(S::Vector{Int}, Zζ_old::Vector{Int},
           end
         elseif SBMp_flag
           for ℓ in 1:λ_indx.nZζ
-              Zcand, ζcand = copy(λ_indx.Zζindx[ℓ,1]), copy(λ_indx.Zζindx[ℓ,2])
-              SlagrevZζnow = copy(Slagrev_now[ λ_indx.indxs[Zcand][ζcand] ])
+              Zcand, ζcand = deepcopy(λ_indx.Zζindx[ℓ,1]), deepcopy(λ_indx.Zζindx[ℓ,2])
+              SlagrevZζnow = deepcopy(Slagrev_now[ λ_indx.indxs[Zcand][ζcand] ])
 
               llikmarg_cand[ℓ] -= logSBMmarginal( N_now[Zcand][:,SlagrevZζnow...],
                                                   prior_Q[Zcand][SlagrevZζnow...].p1_now,
@@ -688,12 +688,12 @@ function rpost_Zζ_marg(S::Vector{Int}, Zζ_old::Vector{Int},
 
       w = exp.( lw .- maximum(lw) )
       newindx = StatsBase.sample(Weights( w ))
-      Zζ_out[i] = copy(newindx)
+      Zζ_out[i] = deepcopy(newindx)
 
       ## update running quantities
-      Znew, ζnew = copy(λ_indx.Zζindx[newindx,1]), copy(λ_indx.Zζindx[newindx,2])
+      Znew, ζnew = deepcopy(λ_indx.Zζindx[newindx,1]), deepcopy(λ_indx.Zζindx[newindx,2])
       N_now[Znew][:,Slagrev_now[ λ_indx.indxs[Znew][ζnew] ]...] += eSt
-      llikmarg = copy(llikmarg_cand[newindx])
+      llikmarg = deepcopy(llikmarg_cand[newindx])
   end
 
   Zζ_out
@@ -848,7 +848,7 @@ function MetropIndep_ΛλZζ(S::Vector{Int}, lΛ_old::Vector{Float64},
 
   for m in 1:M
       for ℓ in 1:(K^m)
-          α_now = copy(prior_Q_mats[m][:,ℓ])
+          α_now = deepcopy(prior_Q_mats[m][:,ℓ])
           llikmarg_cand += SparseProbVec.lmvbeta( N_cand_mats[m][:,ℓ] + α_now )
           llikmarg_old += SparseProbVec.lmvbeta( N_old_mats[m][:,ℓ] + α_now )
       end
@@ -955,17 +955,17 @@ function mcmc_mmtd!(model::ModMMTD, n_keep::Int, save::Bool=true,
 
         if save
             @inbounds sims.Λ[i,:] = exp.( model.state.lΛ )
-            @inbounds sims.Zζ[i,:] = copy(model.state.Zζ[monitor_indx])
+            @inbounds sims.Zζ[i,:] = deepcopy(model.state.Zζ[monitor_indx])
             for m in 1:model.M
                 @inbounds sims.λ[m][i,:] = exp.( model.state.lλ[m] )
                 @inbounds sims.Q[m][i,:] = exp.( vec( model.state.lQ[m] ) )
                 if λSBMp_flag || λSBMfull_flag
-                    sims.p1λ[i,m] = copy(model.prior.λ[m].p1_now)
+                    sims.p1λ[i,m] = deepcopy(model.prior.λ[m].p1_now)
                 end
                 if QSBMp_flag || QSBMfull_flag
                     pQvec = vec( model.prior.lQ[m] )
                     for kk in 1:model.K^m
-                        sims.p1Q[m][i,kk] = copy( pQvec[kk].p1_now )
+                        sims.p1Q[m][i,kk] = deepcopy( pQvec[kk].p1_now )
                     end
                 end
             end
@@ -1037,13 +1037,13 @@ function bfact_MC(S::Vector{Int}, R::Int, M::Int, K::Int,
 
       for i in 1:λ_indx.nZζ
 
-          Znow = copy(λ_indx.Zζindx[i,1])
+          Znow = deepcopy(λ_indx.Zζindx[i,1])
           Zandζ_now = ZζtoZandζ( fill(i, n) , λ_indx)
 
           ## calculate current log marginal likelihood
           N_now = counttrans_mmtd(S, TT, Zandζ_now, λ_indx, R, M, K) # vector of arrays, indices in reverse time
 
-          α0_Q = copy(prior_Q[Znow])
+          α0_Q = deepcopy(prior_Q[Znow])
           α0_Qmat = reshape(α0_Q, K, K^Znow)
           α1_Q = α0_Q .+ N_now[Znow]
           α1_Qmat = reshape(α1_Q, K, K^Znow)
@@ -1053,7 +1053,7 @@ function bfact_MC(S::Vector{Int}, R::Int, M::Int, K::Int,
             llikmarg += SparseProbVec.lmvbeta( α1_Qmat[:,kk] ) - SparseProbVec.lmvbeta( α0_Qmat[:,kk] )
           end
 
-          llik[i] = copy(llikmarg)
+          llik[i] = deepcopy(llikmarg)
       end
 
       if report == "recipmax"
@@ -1081,7 +1081,7 @@ function bfact_MC(S::Vector{Int}, R::Int, M::Int, K::Int,
 
       for i in 1:λ_indx.nZζ
 
-          Znow, ζnow = copy(λ_indx.Zζindx[i,1:2])
+          Znow, ζnow = deepcopy(λ_indx.Zζindx[i,1:2])
           Zandζ_now = ZζtoZandζ( fill(i, n) , λ_indx)
 
           ## calculate current log marginal likelihood
@@ -1097,7 +1097,7 @@ function bfact_MC(S::Vector{Int}, R::Int, M::Int, K::Int,
                                         prior_Q_vec[Znow][kk].M )
           end
 
-          llik[i] = copy(llikmarg)
+          llik[i] = deepcopy(llikmarg)
       end
 
       if report == "recipmax"
