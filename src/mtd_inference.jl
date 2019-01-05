@@ -3,7 +3,8 @@
 export ParamsMTD, PriorMTD, ModMTD,
   sim_mtd, symmetricDirPrior_mtd, transTensor_mtd,
   rpost_lλ_mtd, counttrans_mtd, rpost_lQ_mtd,
-  rpost_ζ_mtd, rpost_ζ_mtd_marg, MetropIndep_λζ, mcmc_mtd!; # remove the inner functions after testing
+  rpost_ζ_mtd, rpost_ζ_mtd_marg, MetropIndep_λζ,
+  mcmc_mtd!, timemod!, etr; # remove the inner functions after testing
 
 mutable struct ParamsMTD
   lλ::Vector{Float64}
@@ -30,7 +31,7 @@ end
 
 mutable struct PostSimsMTD
   λ::Matrix{Float64}
-  Q::Array{Matrix{Float64}}
+  Q::Array{Float64}
   ζ::Matrix{Int}
 end
 
@@ -392,8 +393,8 @@ function mcmc_mtd!(model::ModMTD, n_keep::Int, save::Bool=true,
     if save
         monitorS_len = length(monitorS_indx)
         sims = PostSimsMTD(  zeros(Float64, n_keep, model.R), # λ
-        zeros(Float64, n_keep, model.K^2), # Q
-        zeros(Int, n_keep, monitorS_len) # ζ )
+        zeros(Float64, n_keep, model.K, model.K), # Q
+        zeros(Int, n_keep, monitorS_len) #= ζ =# )
     end
 
     ## sampling
@@ -430,7 +431,7 @@ function mcmc_mtd!(model::ModMTD, n_keep::Int, save::Bool=true,
 
         if save
             @inbounds sims.λ[i,:] = exp.( model.state.lλ )
-            @inbounds sims.Q[i,:] = exp.( vec( model.state.lQ ) )
+            @inbounds sims.Q[i,:,:] = exp.( model.state.lQ )
             @inbounds sims.ζ[i,:] = deepcopy(model.state.ζ[monitorS_indx])
         end
     end
@@ -443,4 +444,29 @@ function mcmc_mtd!(model::ModMTD, n_keep::Int, save::Bool=true,
         return model.iter
     end
 
+end
+
+## timing for benchmarks
+function timemod!(n::Int64, model::ModMTD, niter::Int, outfilename::String)
+    outfile = open(outfilename, "a+")
+    write(outfile, "timing for $(niter) iterations each:\n")
+    for i in 1:n
+        tinfo = @timed mcmc_mtd!(model, niter, false, outfilename)
+        write(outfile, "trial $(i), elapsed: $(tinfo[2]) seconds, allocation: $(tinfo[3]/1.0e6) Megabytes\n")
+    end
+    close(outfile)
+end
+
+## estimate time remaining
+function etr(timestart::DateTime, n_keep::Int, thin::Int, outfilename::String)
+    timeendburn = now()
+    durperiter = (timeendburn - timestart).value / 1.0e5 # in milliseconds
+    milsecremaining = durperiter * (n_keep * thin)
+    estimatedfinish = now() + Dates.Millisecond(Int64(round(milsecremaining)))
+    report_file = open(outfilename, "a+")
+    write(report_file, "Completed burn-in at $(durperiter/1.0e3*1000.0) seconds per 1000 iterations \n
+      $(durperiter/1.0e3/60.0*1000.0) minutes per 1000 iterations \n
+      $(durperiter/1.0e3/60.0/60.0*1000.0) hours per 1000 iterations \n
+      estimated completion time $(estimatedfinish)")
+    close(report_file)
 end
