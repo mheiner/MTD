@@ -341,7 +341,9 @@ function MetropIndep_λζ(S::Vector{Int}, lλ_old::Vector{Float64}, ζ_old::Vect
 
   if typeof(prior_λ) == Vector{Float64}
       lλ_cand = SparseProbVec.rDirichlet(prior_λ, true)
-  else
+  elseif typeof(prior_λ) == SBMprior
+      lλ_cand = SparseProbVec.rand(prior_λ, true)[1]
+  elseif typeof(prior_λ) == SparseDirMix
       lλ_cand = SparseProbVec.rand(prior_λ, true)
   end
 
