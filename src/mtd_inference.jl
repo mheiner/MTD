@@ -100,7 +100,7 @@ function rpost_lλ_mtd(α0_λ::Vector{Float64}, ζ::Vector{Int}, R::Int)
 
     Nζ = StatsBase.counts(ζ, 1:R)
     α1_λ = α0_λ .+ Nζ
-    lλ_out = SparseProbVec.rDirichlet(α1_λ, true)
+    lλ_out = SparseProbVec.rDirichlet(α1_λ, logout=true)
 
     lλ_out
 end
@@ -109,7 +109,7 @@ function rpost_lλ_mtd(prior::SparseDirMix, ζ::Vector{Int}, R::Int)
     Nζ = StatsBase.counts(ζ, 1:R)
     α1_λ = prior.α .+ Nζ
     d = SparseProbVec.SparseDirMix(α1_λ, prior.β)
-    lλ_out = SparseProbVec.rand(d, true)
+    lλ_out = SparseProbVec.rand(d, logout=true)
 
     lλ_out
 end
@@ -117,7 +117,7 @@ function rpost_lλ_mtd(prior::SBMprior, ζ::Vector{Int}, R::Int)
 
     Nζ = StatsBase.counts(ζ, 1:R)
     post_lλ = SparseProbVec.SBM_multinom_post(prior, Nζ)
-    lλ_out, lz_now, ξ_now = SparseProbVec.rand(post_lλ, true)
+    lλ_out = SparseProbVec.rand(post_lλ, logout=true)
 
     lλ_out
 end
@@ -166,7 +166,7 @@ function rpost_lQ_mtd(S::Vector{Int}, TT::Int, prior::Matrix{Float64},
 
     α1_Q = α0_Q .+ N
     for j in 1:K
-        lQ_out[:,j] = SparseProbVec.rDirichlet(α1_Q[:,j], true)
+        lQ_out[:,j] = SparseProbVec.rDirichlet(α1_Q[:,j], logout=true)
     end
 
     lQ_out
@@ -183,7 +183,7 @@ function rpost_lQ_mtd(S::Vector{Int}, TT::Int,
     for j in 1:K
         α1 = prior[j].α .+ N[:,j]
         d = SparseProbVec.SparseDirMix(α1, prior[j].β)
-        lQ_out[:,j] = SparseProbVec.rand(d, true)
+        lQ_out[:,j] = SparseProbVec.rand(d, logout=true)
     end
 
     lQ_out
@@ -199,7 +199,7 @@ function rpost_lQ_mtd(S::Vector{Int}, TT::Int,
 
     for j in 1:K
         d = SparseProbVec.SBM_multinom_post(prior[j], N[:,j])
-        lQ_out[:,j] = SparseProbVec.rand(d, true)[1]
+        lQ_out[:,j] = SparseProbVec.rand(d, logout=true)
     end
 
     lQ_out
@@ -340,11 +340,11 @@ function MetropIndep_λζ(S::Vector{Int}, lλ_old::Vector{Float64}, ζ_old::Vect
     TT::Int, R::Int, K::Int)
 
   if typeof(prior_λ) == Vector{Float64}
-      lλ_cand = SparseProbVec.rDirichlet(prior_λ, true)
+      lλ_cand = SparseProbVec.rDirichlet(prior_λ, logout=true)
   elseif typeof(prior_λ) == SBMprior
-      lλ_cand = SparseProbVec.rand(prior_λ, true)[1]
+      lλ_cand = SparseProbVec.rand(prior_λ, logout=true)
   elseif typeof(prior_λ) == SparseDirMix
-      lλ_cand = SparseProbVec.rand(prior_λ, true)
+      lλ_cand = SparseProbVec.rand(prior_λ, logout=true)
   end
 
   λ_cand = exp.(lλ_cand)
