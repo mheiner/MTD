@@ -16,7 +16,7 @@ end
 mutable struct PriorMMTD
   Λ::Union{Vector{Float64}, SparseDirMix, SBMprior}
   λ::Union{Vector{Vector{Float64}}, Vector{SparseDirMix}, Vector{SBMprior}}
-  Q::Union{Vector{<:Array{Float64}}, Vector{<:Array{SparseDirMix}}, Vector{<:Array{SparseSBMprior}}}
+  Q::Union{Vector{<:Array{Float64}}, Vector{<:Array{SparseDirMix}}, Vector{<:Array{SBMprior}}}
 end
 
 mutable struct λindxMMTD
@@ -311,7 +311,7 @@ function rpost_lQ_mmtd(S::Vector{Int}, TT::Int,
     for j in 1:ncol
       α1 = prior_vec[m][j].α .+ Nmat[:,j]
       d = SparseProbVec.SparseDirMix(α1, prior_vec[m][j].β)
-      lQ_mats[m][:,j] = SparseProbVec.rand(d, true)
+      lQ_mats[m][:,j] = SparseProbVec.rand(d, logout=true)
     end
     lQ_out[m] = reshape(lQ_mats[m], fill(K, m+1)...)
   end
@@ -417,75 +417,7 @@ function rpost_Zζ_marg(S::Vector{Int}, Zζ_old::Vector{Int}, λ_indx::λindxMMT
 end
 function rpost_Zζ_marg(S::Vector{Int}, Zζ_old::Vector{Int},
     λ_indx::λindxMMTD,
-    prior_Q::Vector{<:Array{SparseDirMix}},
-    lΛ::Vector{Float64},
-    lλ::Vector{Vector{Float64}},
-    TT::Int, R::Int, M::Int, K::Int)
-
-  Zζ_out = deepcopy(Zζ_old)
-  Zandζ_now = ZζtoZandζ(Zζ_out, λ_indx) # won't get updated
-  prior_Q_vec = [ reshape(prior_Q[m], (K^m)) for m in 1:M ]
-
-  ## calculate current log marginal likelihood
-  N_now = counttrans_mmtd(S, TT, Zandζ_now, λ_indx, R, M, K) # vector of arrays, indices in reverse time
-  N_now_mats = [ reshape(N_now[m], K, K^m) for m in 1:M ] # Ns won't be updated, only llikmarg
-
-  llikmarg = 0.0
-  for m in 1:M
-      for ℓ in 1:(K^m)
-          llikmarg += SparseProbVec.logMarginal(prior_Q_vec[m][ℓ], N_now_mats[m][:,ℓ])
-      end
-  end
-
-  ## for each time point, modify llikmarg accordingly
-  for i in 1:(TT-R)  # i indexes ζ, tt indexes S
-    tt = i + R
-    Slagrev_now = S[range(tt-1, step=-1, length=R)]
-
-    Zold, ζold = deepcopy(λ_indx.Zζindx[Zζ_out[i],1]), deepcopy(λ_indx.Zζindx[Zζ_out[i],2])
-    eSt = [ 1*(kk==S[tt]) for kk in 1:K ]
-
-    # remove S_t from llikmarg
-    SlagrevZζnow = deepcopy(Slagrev_now[ λ_indx.indxs[Zold][ζold] ])
-    llikmarg -= SparseProbVec.logMarginal( prior_Q[Zold][SlagrevZζnow...],
-                                N_now[Zold][:,SlagrevZζnow...] )
-            # prior for Q indexed with Slagrev_now[ λ_indx.indxs[Zold][ζold] ]...
-    N_now[Zold][:,SlagrevZζnow...] -= eSt
-    llikmarg += SparseProbVec.logMarginal( prior_Q[Zold][SlagrevZζnow...],
-                                N_now[Zold][:,SlagrevZζnow...] )
-
-    # calculate llikmarg and update probability under each possible Zζ
-    llikmarg_cand = fill(llikmarg, λ_indx.nZζ)
-    lw = zeros(Float64, λ_indx.nZζ)
-
-    for ℓ in 1:λ_indx.nZζ
-        Zcand, ζcand = deepcopy(λ_indx.Zζindx[ℓ,1]), deepcopy(λ_indx.Zζindx[ℓ,2])
-        SlagrevZζnow = deepcopy(Slagrev_now[ λ_indx.indxs[Zcand][ζcand] ])
-
-        llikmarg_cand[ℓ] -= SparseProbVec.logMarginal( prior_Q[Zcand][SlagrevZζnow],
-                                    N_now[Zcand][:,SlagrevZζnow...] )
-        llikmarg_cand[ℓ] += SparseProbVec.logMarginal( prior_Q[Zcand][SlagrevZζnow],
-                                    N_now[Zcand][:,SlagrevZζnow...] .+ eSt )
-
-        lw[ℓ] = llikmarg_cand[ℓ] + lΛ[Zcand] + lλ[Zcand][ζcand]
-    end
-
-    w = exp.( lw .- maximum(lw) )
-    newindx = StatsBase.sample(Weights( w ))
-    Zζ_out[i] = deepcopy(newindx)
-
-    ## update running quantities
-    Znew, ζnew = deepcopy(λ_indx.Zζindx[newindx,1]), deepcopy(λ_indx.Zζindx[newindx,2])
-    N_now[Znew][:,Slagrev_now[ λ_indx.indxs[Znew][ζnew] ]...] += eSt
-    llikmarg = deepcopy(llikmarg_cand[newindx])
-
-  end
-
-  Zζ_out
-end
-function rpost_Zζ_marg(S::Vector{Int}, Zζ_old::Vector{Int},
-    λ_indx::λindxMMTD,
-    prior_Q::Vector{<:Array{SBMprior}},
+    prior_Q::Union{Vector{<:Array{SparseDirMix}}, Vector{<:Array{SBMprior}}},
     lΛ::Vector{Float64},
     lλ::Vector{Vector{Float64}},
     TT::Int, R::Int, M::Int, K::Int)
@@ -569,8 +501,6 @@ function MetropIndep_ΛλZζ(S::Vector{Int}, lΛ_old::Vector{Float64},
     λ_indx::λindxMMTD,
     TT::Int, R::Int, M::Int, K::Int)
 
-  prior_Q_vec = [ reshape(prior_Q[m], (K^m)) for m in 1:M ]
-
   if typeof(prior_Λ) == Vector{Float64}
       lΛ_cand = SparseProbVec.rDirichlet(prior_Λ, logout=true)
     elseif typeof(prior_Λ) <: Union{SparseDirMix, SBMprior}
@@ -579,8 +509,8 @@ function MetropIndep_ΛλZζ(S::Vector{Int}, lΛ_old::Vector{Float64},
 
   if typeof(prior_λ)==Vector{Vector{Float64}}
       lλ_cand = [ SparseProbVec.rDirichlet(prior_λ[m], logout=true) for m in 1:M ]
-    elseif typeof(prior_λ)==Vector{SparseDirMixPrior}
-      lλ_cand = [ rand(prior_λ[m], logout=true) for m in 1:M ]
+  elseif typeof(prior_λ) <: Union{Vector{SparseDirMix}, Vector{SBMprior}}
+      lλ_cand = [ SparseProbVec.rand(prior_λ[m], logout=true) for m in 1:M ]
   end
 
   lΛλ_cand = [ lΛ_cand[λ_indx.Zζindx[j,1]] + lλ_cand[λ_indx.Zζindx[j,1]][λ_indx.Zζindx[j,2]] for j in 1:λ_indx.nZζ ]
@@ -601,6 +531,8 @@ function MetropIndep_ΛλZζ(S::Vector{Int}, lΛ_old::Vector{Float64},
 
   if typeof(prior_Q) <: Vector{<:Array{Float64}}
 
+      prior_Q_mats = [ reshape(prior_Q[m], K, K^m) for m in 1:M ]
+
       for m in 1:M
           for ℓ in 1:(K^m)
             α_now = deepcopy(prior_Q_mats[m][:,ℓ])
@@ -610,6 +542,8 @@ function MetropIndep_ΛλZζ(S::Vector{Int}, lΛ_old::Vector{Float64},
       end
 
   elseif typeof(prior_Q) <: Union{Vector{<:Array{SparseDirMix}}, Vector{<:Array{SBMprior}}}
+
+      prior_Q_vec = [ reshape(prior_Q[m], (K^m)) for m in 1:M ]
 
       for m in 1:M
           for ℓ in 1:(K^m)
@@ -769,12 +703,6 @@ priQ_type = "SBM"
 if priQ_type == "Dir"
     prior_Q = symmetricDirPrior_mmtd(1.0, 1.0, 1.0, R, M, K, λ_indx)[3]
 elseif priQ_type == "SBM"
-    p1_Q = 0.95
-    η_Q = 1.0e3
-    μ_Q = 0.9
-    M_Q = 4.0
-    prior_Q = [ [ SparseSBPrior(η_Q, p1_Q, μ_Q, M_Q) for kk in 1:(K^m) ] for m in 1:M ] # SBM
-    prior_Q = [ reshape(prior_Q[m], fill(K, m)... ) for m in 1:M ]
 end
 
 bf = bfact_MC(S, R, M, K, prior_Q)
