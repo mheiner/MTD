@@ -1,9 +1,8 @@
 # mtd_inference.jl
 
-export ParamsMTD, PriorMTD, ModMTD,
+export ParamsMTD, PriorMTD, ModMTD, PostSimsMTD,
   sim_mtd, symmetricDirPrior_mtd, transTensor_mtd,
-  rpost_lλ_mtd, counttrans_mtd, rpost_lQ_mtd,
-  rpost_ζ_mtd, rpost_ζ_mtd_marg, MetropIndep_λζ,
+  counttrans_mtd,
   mcmc_mtd!, timemod!, etr; # remove the inner functions after testing
 
 mutable struct ParamsMTD
@@ -44,7 +43,7 @@ function sim_mtd(TT::Int, nburn::Int, R::Int, K::Int,
 
   Nsim = nburn + TT
 
-  ζ = [ StatsBase.sample(Weights(λ[m])) for i in 1:(Nsim-R) ]
+  ζ = [ StatsBase.sample(Weights(λ)) for i in 1:(Nsim-R) ]
 
   S = Vector{Int}(undef, Nsim)
   S[1:R] = StatsBase.sample(1:K, R)
@@ -332,7 +331,6 @@ end
         TT::Int, R::Int, K::Int)
 
     Independence Metropolis step for λ and ζ.
-    Currently assumes M=1.
 """
 function MetropIndep_λζ(S::Vector{Int}, lλ_old::Vector{Float64}, ζ_old::Vector{Int},
     prior_λ::Union{Vector{Float64}, SparseDirMix, SBMprior},
