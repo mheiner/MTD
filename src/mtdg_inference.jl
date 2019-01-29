@@ -161,7 +161,7 @@ function counttrans_mtdg(S::Vector{Int}, TT::Int, ζ::Vector{Int},
     else
         Slagrev_now = deepcopy( S[range(tt-1, step=-1, length=R)] )
         from = deepcopy( Slagrev_now[ ζ[tt-R] ] )
-        N_out[ S[tt], from ] += 1
+        N_out[ζ[tt-R]][ S[tt], from ] += 1
     end
   end
 
@@ -174,7 +174,7 @@ end
     rpost_lQ_mtdg(S, TT, prior_Q0, Prior_Q, ζ, R, K)
 """
 function rpost_lQ_mtdg(S::Vector{Int}, TT::Int,
-    prior_Q0::Vector{Float64}, Prior_Q::Vector{Matrix{Float64}},
+    prior_Q0::Vector{Float64}, prior_Q::Vector{Matrix{Float64}},
     ζ::Vector{Int}, R::Int, K::Int)
 
     N0, N = counttrans_mtdg(S, TT, ζ, R, K)
@@ -286,7 +286,7 @@ function rpost_ζ_mtdg_marg(S::Vector{Int}, ζ_old::Vector{Int},
     α0_Q0 = deepcopy(prior_Q0)
 
     ζ_out = deepcopy(ζ_old)
-    N0_now, N_now = counttrans_mtdg(S, TT, ζ, R, K) # in each N, rows are tos, cols are froms
+    N0_now, N_now = counttrans_mtdg(S, TT, ζ_out, R, K) # in each N, rows are tos, cols are froms
 
     for i in 1:(TT-R)  # i indexes ζ, tt indexes S
         tt = i + R
@@ -329,7 +329,7 @@ function rpost_ζ_mtdg_marg(S::Vector{Int}, ζ_old::Vector{Int},
             end
         end
 
-        lw = lλ + sum(lmvbn_without)
+        lw = lλ .+ sum(lmvbn_without)
         for ℓ in 0:R
             lw[ℓ+1] -= lmvbn_without[ℓ+1]
             lw[ℓ+1] += lmvbn_with[ℓ+1]
@@ -418,7 +418,7 @@ mcmc_mtdg!(model::ModMTDg, n_keep::Int, save::Bool=true,
     report_freq::Int=1000;
     monitorS_indx::Vector{Int}=[1])
 """
-function mcmc_mtd!(model::ModMTDg, n_keep::Int, save::Bool=true,
+function mcmc_mtdg!(model::ModMTDg, n_keep::Int, save::Bool=true,
     report_filename::String="out_progress.txt", thin::Int=1, jmpstart_iter::Int=25,
     report_freq::Int=1000;
     monitorS_indx::Vector{Int}=[1])
@@ -429,7 +429,7 @@ function mcmc_mtd!(model::ModMTDg, n_keep::Int, save::Bool=true,
 
     if save
         monitorS_len = length(monitorS_indx)
-        sims = PostSimsMTDg(  zeros(Float64, n_keep, model.R), # λ
+        sims = PostSimsMTDg(  zeros(Float64, n_keep, model.R + 1), # λ
         zeros(Float64, n_keep, model.K), # Q0
         zeros(Float64, n_keep, model.R, model.K, model.K), # Q
         zeros(Int, n_keep, monitorS_len) #= ζ =# )
@@ -471,7 +471,7 @@ function mcmc_mtd!(model::ModMTDg, n_keep::Int, save::Bool=true,
         if save
             @inbounds sims.λ[i,:] = exp.( model.state.lλ )
             @inbounds sims.Q0[i,:] = exp.( model.state.lQ0 )
-            for ℓ in 1:R
+            for ℓ in 1:model.R
                 @inbounds sims.Q[i,ℓ,:,:] = exp.( model.state.lQ[ℓ] )
             end
             @inbounds sims.ζ[i,:] = deepcopy(model.state.ζ[monitorS_indx])
