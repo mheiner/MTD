@@ -325,7 +325,7 @@ function rpost_ζ_mtdg_marg(S::Vector{Int}, ζ_old::Vector{Int},
                 lmvbn_without[ℓ+1] = SparseProbVec.logMarginal( prior_Q[ℓ][Slagrev_now[ℓ]],
                         Ninit[ℓ][:,Slagrev_now[ℓ]] )
                 lmvbn_with[ℓ+1] = SparseProbVec.logMarginal( prior_Q[ℓ][Slagrev_now[ℓ]],
-                        Ninit[ℓ][:,Slagrev_now[ℓ]] + eSt )
+                        Ninit[ℓ][:,Slagrev_now[ℓ]] + Int64.(eSt) )
             end
         end
 
@@ -538,8 +538,18 @@ function TankReduction(λ::Vector{Float64},
     end
 
     λr = vcat( sum(ZZ0), [ sum(ZZ[ℓ][:,1]) for ℓ = 1:R ]  )
-    Q0r = ZZ0 ./ λr[1]
-    Qr = [ ZZ[ℓ] ./ λr[ℓ+1] for ℓ = 1:R ]
+    Q0r = deepcopy(ZZ0)
+    Qr = deepcopy(ZZ)
+
+    if λr[1] > 0.0
+        Q0r ./= λr[1]
+    end
+
+    for ℓ = 1:R
+        if λr[ℓ+1] > 0.0
+            Qr[ℓ] ./= λr[ℓ+1]
+        end
+    end
 
     λr, Q0r, Qr
 end
