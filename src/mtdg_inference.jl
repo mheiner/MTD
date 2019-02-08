@@ -67,7 +67,7 @@ end
 
 
 """
-    symmetricPrior_mtdg(size_λ, size_Q, size_Q0, R, K)
+    symmetricPrior_mtdg(size_λ, size_Q0, size_Q, R, K)
 """
 function symmetricDirPrior_mtdg(size_λ::Float64, size_Q0::Float64, size_Q::Float64,
   R::Int, K::Int)
@@ -135,7 +135,7 @@ end
 
 
 """
-    counttrans_mtd(S, TT, ζ, R, K)
+    counttrans_mtdg(S, TT, ζ, R, K)
 
     ### Example
     ```julia
@@ -239,7 +239,7 @@ function rpost_lQ_mtdg(S::Vector{Int}, TT::Int,
         end
     end
 
-    lQ_out
+    lQ0_out, lQ_out
 end
 
 
