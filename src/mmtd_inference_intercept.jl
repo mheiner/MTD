@@ -4,7 +4,7 @@ export ParamsMMTD, PriorMMTD, ModMMTD, λindxMMTD,
   build_λ_indx, ZζtoZandζ, sim_mmtd, symmetricDirPrior_mmtd, transTensor_mmtd,
   counttrans_mmtd,
   mcmc_mmtd!, timemod!,
-  bfact_MC, forecDist_MMTD; # remove the inner functions after testing
+  bfact_MC, forecDist_MMTD, llik_MMTD; # remove the inner functions after testing
 
 mutable struct ParamsMMTD
   lΛ::Vector{Float64}
@@ -57,10 +57,19 @@ mutable struct PostSimsMMTD
   Q0::Matrix{Float64}
   Q::Array{Matrix{Float64}} # stored matricized
   Zζ::Matrix{Int} # index 1 is iteration, index 2 is time, entries are Zζ
-
-  PostSimsMMTD(Λ, λ, Q0, Q, Zζ) = new(deepcopy(Λ), deepcopy(λ),
-    deepcopy(Q0), deepcopy(Q), deepcopy(Zζ))
+  llik::Vector{Float64}
 end
+
+## outer constructor
+function PostSimsMMTD(model::ModMMTD, n_keep::Int, monitorS_len)
+    PostSimsMMTD( Matrix{Float64}(undef, n_keep, model.M+1), # Λ
+    [ Matrix{Float64}(undef, n_keep, model.λ_indx.lens[m]) for m in 1:model.M ], # λ
+    Matrix{Float64}(undef, n_keep, model.K), # Q0
+    [ Matrix{Float64}(undef, n_keep, model.K^(m+1)) for m in 1:model.M ], # Q
+    Matrix{Int}(undef, n_keep, monitorS_len), # Zζ
+    Vector{Float64}(undef, n_keep) #= llik =# )
+end
+
 
 """
     build_λ_indx(R, M)
@@ -94,7 +103,7 @@ end
 
 
 """
-    sim_mmtd(TT, nburn, R, M, K, λ_indx, Λ, λ, Q)
+    sim_mmtd(TT, nburn, R, M, K, λ_indx, Λ, λ, Q0, Q)
 """
 function sim_mmtd(TT::Int, nburn::Int, R::Int, M::Int, K::Int, λ_indx::λindxMMTD,
   Λ::Array{Float64}, λ::Array{Vector{Float64}},
@@ -160,7 +169,7 @@ end
 
 
 """
-    transTensor_mmtd(R, M, K, λ_indx, Λ, λ, Q)
+    transTensor_mmtd(R, M, K, λ_indx, Λ, λ, Q0, Q)
 
 Calculate full transition tensor from Λ, λ, and Q.
 """
@@ -207,55 +216,6 @@ end
 """
     rpost_lλ_mmtd(prior, Zandζ, λ_lens, M)
 """
-# function rpost_lλ_mmtd(α0_λ::Vector{Vector{Float64}}, Zandζ::Matrix{Int},
-#   λ_lens::Vector{Int}, M::Int)
-#
-#   lλ_out = [ Vector{Float64}(undef, λ_lens[m]) for m in 1:M ]
-#   Z = deepcopy(Zandζ[:,1])
-#   ζ = deepcopy(Zandζ[:,2])
-#
-#   for m in 1:M
-#     Zmindx = findall(Z .== m)
-#     Nζ = StatsBase.counts(ζ[Zmindx], 1:λ_lens[m])
-#     α1_λ = α0_λ[m] .+ Nζ
-#     lλ_out[m] = SparseProbVec.rDirichlet(α1_λ, logout=true)
-#   end
-#
-#   lλ_out
-# end
-# function rpost_lλ_mmtd(prior::Vector{SparseDirMix}, Zandζ::Matrix{Int},
-#   λ_lens::Vector{Int}, M::Int)
-#
-#   lλ_out = [ Vector{Float64}(undef, λ_lens[m]) for m in 1:M ]
-#   Z = deepcopy(Zandζ[:,1])
-#   ζ = deepcopy(Zandζ[:,2])
-#
-#   for m in 1:M
-#     Zmindx = findall(Z .== m)
-#     Nζ = StatsBase.counts(ζ[Zmindx], 1:λ_lens[m])
-#     α1_λ = prior[m].α .+ Nζ
-#     d = SparseDirMix(α1_λ, prior[m].β)
-#     lλ_out[m] = SparseProbVec.rand(d, logout=true)
-#   end
-#
-#   lλ_out
-# end
-# function rpost_lλ_mmtd(prior::Vector{SBMprior}, Zandζ::Matrix{Int},
-#   λ_lens::Vector{Int}, M::Int)
-#
-#   lλ_out = [ Vector{Float64}(undef, λ_lens[m]) for m in 1:M ]
-#   Z = deepcopy(Zandζ[:,1])
-#   ζ = deepcopy(Zandζ[:,2])
-#
-#   for m in 1:M
-#     Zmindx = findall(Z .== m)
-#     Nζ = StatsBase.counts(ζ[Zmindx], 1:λ_lens[m])
-#     post_lλ = SparseProbVec.SBM_multinom_post(prior[m], Nζ)
-#     lλ_out[m] = SparseProbVec.rand(post_lλ, logout=true)
-#   end
-#
-#   lλ_out
-# end
 function rpost_lλ_mmtd(prior::Vector{Union{Vector{Float64}, SparseDirMix, SBMprior}},
     Zandζ::Matrix{Int},
     λ_lens::Vector{Int}, M::Int)
@@ -466,7 +426,7 @@ function rpost_Zζ_marg(S::Vector{Int}, Zζ_old::Vector{Int}, λ_indx::λindxMMT
 
     eSt = [ 1.0 * (kk==S[tt]) for kk in 1:K ]
 
-    # remove S_t from llikmarg
+    # remove S_t from llikmarg and α1
     if Zold == 0
         llikmarg -= SparseProbVec.lmvbeta( α1_Q0 )
         α1_Q0 -= eSt
@@ -532,7 +492,7 @@ function rpost_Zζ_marg(S::Vector{Int}, Zζ_old::Vector{Int},
 
   ## calculate current log marginal likelihood
   N0_now, N_now = counttrans_mmtd(S, TT, Zandζ_now, λ_indx, R, M, K) # vector of arrays, indices in reverse time
-  N_now_mats = [ reshape(N_now[m], K, K^m) for m in 1:M ] # Ns won't be updated, only llikmarg
+  N_now_mats = [ reshape(N_now[m], K, K^m) for m in 1:M ] # Nmats won't be updated, only llikmarg, α1_Q0, and N_now
 
   α1_Q0 = α0_Q0 .+ N0_now # gets re-used and updated
 
@@ -604,7 +564,7 @@ function rpost_Zζ_marg(S::Vector{Int}, Zζ_old::Vector{Int},
           Znew, ζnew = deepcopy(λ_indx.Zζindx[newindx,1]), deepcopy(λ_indx.Zζindx[newindx,2])
           N_now[Znew][:,Slagrev_now[ λ_indx.indxs[Znew][ζnew] ]...] += eSt
       end
-      llikmarg = deepcopy(llikmarg_cand[newindx])
+      llikmarg = deepcopy(llikmarg_cand[newindx+1])
   end
 
   Zζ_out
@@ -720,11 +680,7 @@ function mcmc_mmtd!(model::ModMMTD, n_keep::Int, save::Bool=true,
 
     if save
         monitorS_len = length(monitorS_indx)
-        sims = PostSimsMMTD( Matrix{Float64}(undef, n_keep, model.M+1), # Λ
-        [ Matrix{Float64}(undef, n_keep, model.λ_indx.lens[m]) for m in 1:model.M ], # λ
-        Matrix{Float64}(undef, n_keep, model.K), # Q0
-        [ Matrix{Float64}(undef, n_keep, model.K^(m+1)) for m in 1:model.M ], # Q
-        Matrix{Int}(undef, n_keep, monitorS_len) #= Zζ =# )
+        sims = PostSimsMMTD(model, n_keep, monitorS_len)
     end
 
     ## sampling
@@ -778,6 +734,8 @@ function mcmc_mmtd!(model::ModMMTD, n_keep::Int, save::Bool=true,
                 @inbounds sims.λ[m][i,:] = exp.( model.state.lλ[m] )
                 @inbounds sims.Q[m][i,:] = exp.( vec( model.state.lQ[m] ) )
             end
+            @inbounds sims.llik[i] = llik_MMTD(model.S, model.state.lΛ, model.state.lλ,
+                model.state.lQ0, model.state.lQ, model.λ_indx)
         end
     end
 
@@ -889,7 +847,7 @@ function bfact_MC(S::Vector{Int}, R::Int, M::Int, K::Int,
 
       bfact = exp.(lbfact)
 
-      (λ_indx, hcat(vcat([0 0], λ_indx.Zζindx), bfact))
+      (λ_indx, hcat(vcat([0 0], λ_indx.Zζindx), bfact, llik))
 end
 function bfact_MC(S::Vector{Int}, R::Int, M::Int, K::Int,
     prior_Q0::Vector{Float64},
@@ -936,7 +894,7 @@ function bfact_MC(S::Vector{Int}, R::Int, M::Int, K::Int,
 
       bfact = exp.(lbfact)
 
-      (λ_indx, hcat(vcat([0 0], λ_indx.Zζindx), bfact))
+      (λ_indx, hcat(vcat([0 0], λ_indx.Zζindx), bfact, llik))
 end
 
 
@@ -949,8 +907,9 @@ Computes the forecast distribution given lagged values and parameters.
 
 ### Example
 ```julia
-    Λ = [0.0, 1.0]
+    Λ = [0.0, 0.0, 1.0]
     λ = [[0.0, 0.0, 1.0], [0.0, 1.0, 0.0]]
+    Q0 = [0.2, 0.8]
     Q = [ reshape([0.7, 0.3, 0.25, 0.75], (2,2)),
           reshape([0.1, 0.9, 0.4, 0.6, 0.5, 0.5, 0.2, 0.8], (2,2,2)) ]
     λ_indx = build_λ_indx(3,2)
@@ -961,9 +920,9 @@ Computes the forecast distribution given lagged values and parameters.
 function forecDist_MMTD(Slagrev::Vector{Int}, Λ::Vector{Float64},
   λ::Vector{Vector{Float64}}, Q0::Vector{Float64}, Q::Vector{<:Array{Float64}},
   λ_indx::λindxMMTD)
-    K = size(Q[1])[1]
-    R = size(λ[1])[1]
-    M = size(Λ)[1]
+    K = length(Q0)
+    R = length(λ[1])
+    M = length(Λ) - 1
     @assert size(Slagrev)[1] == R
     w = zeros(Float64, K)
     for k in 1:K
@@ -977,6 +936,54 @@ function forecDist_MMTD(Slagrev::Vector{Int}, Λ::Vector{Float64},
 end
 
 
+"""
+    forecDist_MMTD(Slagrev::Vector{Int}, Λ::Vector{Float64},
+      λ::Vector{Vector{Float64}}, Q::Vector{Array{Float64}},
+      λ_indx::λindxMMTD)
+
+Computes the (conditional on intial values) log-likelihood for a time series.
+
+### Example
+```julia
+    R = 3
+    M = 2
+    K = 2
+    lΛ = log.([0.0, 0.0, 1.0])
+    lλ = [log.([0.0, 0.0, 1.0]), log.([0.0, 1.0, 0.0])]
+    lQ0 = log.([0.2, 0.8])
+    lQ = [ log.(reshape([0.7, 0.3, 0.25, 0.75], (2,2))),
+          log.(reshape([0.1, 0.9, 0.4, 0.6, 0.5, 0.5, 0.2, 0.8], (2,2,2))) ]
+    λ_indx = build_λ_indx(R,M)
+    S = [1,1,2,1,1,2,2,1,2,2,1,2,1,2,1,1,1,1,2,1,2]
+    llik_MMTD(S, lΛ, lλ, lQ0, lQ, λ_indx)
+```
+"""
+function llik_MMTD(S::Vector{Int}, lΛ::Vector{Float64}, lλ::Vector{Vector{Float64}},
+    lQ0::Vector{Float64}, lQ::Vector{<:Array{Float64}}, λ_indx::λindxMMTD)
+
+    TT = length(S)
+    R = length(lλ[1])
+
+    n = TT - R
+
+    lpt = Matrix{Float64}(undef, n, λ_indx.nZζ+1)
+
+    for i in 1:n
+        tt = i + R
+        Slagrev_now = S[range(tt-1, step=-1, length=R)]
+
+        lpt[i,1] = lΛ[1] * lQ0[S[tt]]
+        for ℓ in 1:λ_indx.nZζ
+            Znow, ζnow = λ_indx.Zζindx[ℓ, 1:2]
+            lpt[i,ℓ+1] = lΛ[Znow+1] + lλ[Znow][ζnow] + lQ[Znow][S[tt], Slagrev_now[λ_indx.indxs[Znow][ζnow]]...]
+        end
+    end
+
+    lptvec = [ SparseProbVec.logsumexp(lpt[i,:]) for i in 1:n ]
+    llik = sum(lptvec)
+
+    return llik
+end
 
 
 """
