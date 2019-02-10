@@ -4,7 +4,7 @@ export ParamsMMTD, PriorMMTD, ModMMTD, λindxMMTD,
   build_λ_indx, ZζtoZandζ, sim_mmtd, symmetricDirPrior_mmtd, transTensor_mmtd,
   counttrans_mmtd,
   mcmc_mmtd!, timemod!,
-  bfact_MC, forecDist_MMTD, llik_MMTD; # remove the inner functions after testing
+  bfact_MC, forecDist_MMTD, llik_MMTD;
 
 mutable struct ParamsMMTD
   lΛ::Vector{Float64}
@@ -61,7 +61,7 @@ mutable struct PostSimsMMTD
 end
 
 ## outer constructor
-function PostSimsMMTD(model::ModMMTD, n_keep::Int, monitorS_len)
+function PostSimsMMTD(model::ModMMTD, n_keep::Int, monitorS_len::Int)
     PostSimsMMTD( Matrix{Float64}(undef, n_keep, model.M+1), # Λ
     [ Matrix{Float64}(undef, n_keep, model.λ_indx.lens[m]) for m in 1:model.M ], # λ
     Matrix{Float64}(undef, n_keep, model.K), # Q0
@@ -937,9 +937,8 @@ end
 
 
 """
-    forecDist_MMTD(Slagrev::Vector{Int}, Λ::Vector{Float64},
-      λ::Vector{Vector{Float64}}, Q::Vector{Array{Float64}},
-      λ_indx::λindxMMTD)
+    llik_MMTD(S::Vector{Int}, lΛ::Vector{Float64}, lλ::Vector{Vector{Float64}},
+        lQ0::Vector{Float64}, lQ::Vector{<:Array{Float64}}, λ_indx::λindxMMTD)
 
 Computes the (conditional on intial values) log-likelihood for a time series.
 
@@ -972,7 +971,7 @@ function llik_MMTD(S::Vector{Int}, lΛ::Vector{Float64}, lλ::Vector{Vector{Floa
         tt = i + R
         Slagrev_now = S[range(tt-1, step=-1, length=R)]
 
-        lpt[i,1] = lΛ[1] * lQ0[S[tt]]
+        lpt[i,1] = lΛ[1] + lQ0[S[tt]]
         for ℓ in 1:λ_indx.nZζ
             Znow, ζnow = λ_indx.Zζindx[ℓ, 1:2]
             lpt[i,ℓ+1] = lΛ[Znow+1] + lλ[Znow][ζnow] + lQ[Znow][S[tt], Slagrev_now[λ_indx.indxs[Znow][ζnow]]...]

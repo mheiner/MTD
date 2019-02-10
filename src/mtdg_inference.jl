@@ -2,7 +2,7 @@
 
 export ParamsMTDg, PriorMTDg, ModMTDg, PostSimsMTDg,
   sim_mtdg, symmetricDirPrior_mtdg, transTensor_mtdg,
-  counttrans_mtdg, mcmc_mtdg!, timemod!, TankReduction;
+  counttrans_mtdg, mcmc_mtdg!, timemod!, llik_MTDg, TankReduction;
 
 
 mutable struct ParamsMTDg
@@ -10,12 +10,15 @@ mutable struct ParamsMTDg
     ζ::Vector{Int} # will be length TT - R
     lQ0::Vector{Float64}
     lQ::Vector{Matrix{Float64}} # organized so first index is now and lag 1 is the next index
+
+    ParamsMTDg(lλ, ζ, lQ0, lQ) = new(deepcopy(lλ), deepcopy(ζ), deepcopy(lQ0), deepcopy(lQ))
 end
 
 mutable struct PriorMTDg
   λ::Union{Vector{Float64}, SparseDirMix, SBMprior}
   Q0::Vector{Float64}
   Q::Union{Vector{Matrix{Float64}}, Vector{Vector{SparseDirMix}}, Vector{Vector{SBMprior}}}
+  PriorMTDg(λ, Q0, Q) = new(deepcopy(λ), deepcopy(Q0), deepcopy(Q))
 end
 
 mutable struct ModMTDg
@@ -27,7 +30,7 @@ mutable struct ModMTDg
   state::ParamsMTDg
   iter::Int
 
-  ModMTDg(R, K, TT, S, prior, state) = new(R, K, TT, S, prior, state, 0)
+  ModMTDg(R, K, TT, S, prior, state) = new(R, K, TT, deepcopy(S), deepcopy(prior), deepcopy(state), 0)
 end
 
 mutable struct PostSimsMTDg
@@ -35,8 +38,17 @@ mutable struct PostSimsMTDg
   Q0::Matrix{Float64}
   Q::Array{Float64}
   ζ::Matrix{Int}
+  llik::Vector{Float64}
 end
 
+## outer constructor
+function PostSimsMTDg(model::ModMTDg, n_keep::Int, monitorS_len::Int)
+    PostSimsMTDg(zeros(Float64, n_keep, model.R + 1), # λ
+        zeros(Float64, n_keep, model.K), # Q0
+        zeros(Float64, n_keep, model.R, model.K, model.K), # Q
+        zeros(Int, n_keep, monitorS_len), # ζ
+        zeros(Float64, n_keep) #= llik =# )
+end
 
 """
     sim_mtdg(TT, nburn, R, K, λ, Q0, Q)
@@ -429,10 +441,7 @@ function mcmc_mtdg!(model::ModMTDg, n_keep::Int, save::Bool=true,
 
     if save
         monitorS_len = length(monitorS_indx)
-        sims = PostSimsMTDg(  zeros(Float64, n_keep, model.R + 1), # λ
-        zeros(Float64, n_keep, model.K), # Q0
-        zeros(Float64, n_keep, model.R, model.K, model.K), # Q
-        zeros(Int, n_keep, monitorS_len) #= ζ =# )
+        sims = PostSimsMTDg(model, n_keep, monitorS_len)
     end
 
     ## sampling
@@ -475,6 +484,8 @@ function mcmc_mtdg!(model::ModMTDg, n_keep::Int, save::Bool=true,
                 @inbounds sims.Q[i,ℓ,:,:] = exp.( model.state.lQ[ℓ] )
             end
             @inbounds sims.ζ[i,:] = deepcopy(model.state.ζ[monitorS_indx])
+            @inbounds sims.llik[i] = llik_MTDg(model.S, model.state.lλ,
+                model.state.lQ0, model.state.lQ)
         end
     end
 
@@ -498,6 +509,51 @@ function timemod!(n::Int64, model::ModMTDg, niter::Int, outfilename::String)
     end
     close(outfile)
 end
+
+
+"""
+    llik_MTDg(S::Vector{Int}, lλ::Vector{Float64},
+        lQ0::Vector{Float64}, lQ::Vector{Matrix{Float64}})
+
+Computes the (conditional on intial values) log-likelihood for a time series.
+
+### Example
+```julia
+    lλ = log.([0.0, 0.0, 0.0, 1.0])
+    lQ0 = log.([0.2, 0.8])
+    lQ = [ log.(reshape([0.7, 0.3, 0.25, 0.75], (2,2))),
+           log.(reshape([0.7, 0.3, 0.25, 0.75], (2,2))),
+           log.(reshape([0.7, 0.3, 0.25, 0.75], (2,2))) ]
+    S = [1,1,2,1,1,2,2,1,2,2,1,2,1,2,1,1,1,1,2,1,2]
+    llik_MTDg(S, lλ, lQ0, lQ)
+```
+"""
+function llik_MTDg(S::Vector{Int}, lλ::Vector{Float64},
+    lQ0::Vector{Float64}, lQ::Vector{Matrix{Float64}})
+
+    TT = length(S)
+    R = length(lλ) - 1
+
+    n = TT - R
+
+    lpt = Matrix{Float64}(undef, n, R+1)
+
+    for i in 1:n
+        tt = i + R
+        Slagrev_now = S[range(tt-1, step=-1, length=R)]
+
+        lpt[i,1] = lλ[1] + lQ0[S[tt]]
+        for ℓ in 1:R
+            lpt[i,ℓ+1] = lλ[ℓ+1] + lQ[ℓ][S[tt], Slagrev_now[ℓ]]
+        end
+    end
+
+    lptvec = [ SparseProbVec.logsumexp(lpt[i,:]) for i in 1:n ]
+    llik = sum(lptvec)
+
+    return llik
+end
+
 
 
 """
