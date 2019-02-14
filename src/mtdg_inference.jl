@@ -2,7 +2,8 @@
 
 export ParamsMTDg, PriorMTDg, ModMTDg, PostSimsMTDg,
   sim_mtdg, symmetricDirPrior_mtdg, transTensor_mtdg,
-  counttrans_mtdg, mcmc_mtdg!, timemod!, llik_MTDg, TankReduction;
+  counttrans_mtdg, mcmc_mtdg!, timemod!, llik_MTDg,
+  TankReduction, forecDist_MTDg;
 
 
 mutable struct ParamsMTDg
@@ -608,4 +609,35 @@ function TankReduction(λ::Vector{Float64},
     end
 
     λr, Q0r, Qr
+end
+
+
+
+"""
+    forecDist_MTDg(Slag::Vector{Int}, λ::Vector{Float64}, Q::Matrix{Float64})
+
+Computes the forecast distribution given lagged values and parameters.
+
+### Example
+```julia
+    lam = [0.2, 0.4, 0.3, 0.1]
+    Q0 = [0.5, 0.5]
+    Q = [ reshape([0.7, 0.3, 0.25, 0.75], (2,2)) for ell = 1:3 ]
+    Slagrev = [1,1,2]
+    forecDist_MTDg(Slagrev, lam, Q0, Q)
+```
+"""
+function forecDist_MTDg(Slagrev::Vector{Int}, λ::Vector{Float64},
+    Q0::Vector{Float64}, Q::Vector{Matrix{Float64}})
+    K = length(Q0)
+    R = length(λ) - 1
+    @assert length(Slagrev) == R
+    w = zeros(Float64, K)
+    for k in 1:K
+        w[k] += λ[1] * Q0[k]
+        for ℓ in 1:R
+            w[k] += λ[ℓ+1] * Q[ℓ][k, Slagrev[ℓ]]
+        end
+    end
+    w
 end

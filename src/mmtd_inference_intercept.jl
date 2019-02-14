@@ -119,9 +119,7 @@ function sim_mmtd(TT::Int, nburn::Int, R::Int, M::Int, K::Int, λ_indx::λindxMM
 
   if Xtras
       Pvecs = Matrix{Float64}(undef, Nsim, K)
-      # Slagrevs = Matrix{Int}(undef, Nsim, R)
-      Pvecs[1:R, :] = 0.0
-      # Slagrevs[1:R, :] = 0
+      Pvecs[1:R, :] .= 0.0
   end
 
   for tt in (R+1):(Nsim)
@@ -135,13 +133,12 @@ function sim_mmtd(TT::Int, nburn::Int, R::Int, M::Int, K::Int, λ_indx::λindxMM
 
     if Xtras
         Pvecs[tt,:] = deepcopy(pvec)
-        # Slagrevs[tt,:] = deepcopy(Slagrev_now)
     end
     S[tt] = StatsBase.sample(Weights( pvec ))
   end
 
   if Xtras
-      S[(nburn+1):(Nsim)], Z[(nburn+1):(Nsim-R)], ζ[(nburn+1):(Nsim-R),:], Pvecs[(nburn+1):(Nsim),:]#, Slagrevs[(nburn+1):(Nsim),:]
+      S[(nburn+1):(Nsim)], Z[(nburn+1):(Nsim-R)], ζ[(nburn+1):(Nsim-R),:], Pvecs[(nburn+1):(Nsim),:]
   else
       S[(nburn+1):(Nsim)], Z[(nburn+1):(Nsim-R)], ζ[(nburn+1):(Nsim-R),:]
   end
@@ -900,7 +897,7 @@ end
 
 """
     forecDist_MMTD(Slagrev::Vector{Int}, Λ::Vector{Float64},
-      λ::Vector{Vector{Float64}}, Q::Vector{Array{Float64}},
+      λ::Vector{Vector{Float64}}, Q0::Vector{Float64}, Q::Vector{<:Array{Float64}},
       λ_indx::λindxMMTD)
 
 Computes the forecast distribution given lagged values and parameters.
@@ -914,7 +911,7 @@ Computes the forecast distribution given lagged values and parameters.
           reshape([0.1, 0.9, 0.4, 0.6, 0.5, 0.5, 0.2, 0.8], (2,2,2)) ]
     λ_indx = build_λ_indx(3,2)
     Slagrev = [1,1,2]
-    forecDist_MMTD(Slagrev, Λ, λ, Q, λ_indx)
+    forecDist_MMTD(Slagrev, Λ, λ, Q0, Q, λ_indx)
 ```
 """
 function forecDist_MMTD(Slagrev::Vector{Int}, Λ::Vector{Float64},
@@ -986,9 +983,10 @@ end
 
 
 """
-    TankReduction(λ, Q0, Q)
+    TankReduction(Λ::Vector{Float64}, λ::Vector{Vector{Float64}},
+        Q0::Vector{Float64}, Q::Vector{<:Array{Float64}}, λ_indx::λindxMMTD) (intercept only)
 
-    Computes the unique Tank Reduction of the MTDg with an intercept.
+    Computes Tank Reduction of the MMTD (intercept only).
 
     ### Example
     ```julia
