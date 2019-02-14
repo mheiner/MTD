@@ -19,7 +19,7 @@ end
 function meanForecLoss(S::Vector{Int}, tprime::Vector{Int},
     lossFn::Function, sims::Union{PostSimsMTD, PostSimsMTDg, PostSimsMMTD},
     TT::Int, R::Int, K::Int,
-    simind::Vector{Int}; λ_indx::Union{nothing, λindxMMTD}=nothing)
+    simind::Vector{Int}; λ_indx::Union{Nothing, λindxMMTD}=nothing)
 
     nsim = length(simind)
     nprime = length(tprime)
@@ -68,7 +68,7 @@ function meanForecLoss(y::Vector{Int}, X::Matrix{Int}, P::Matrix{Float64},
     nprime::Int, lossFn::Function,
     sims::Union{PostSimsMTD, PostSimsMTDg, PostSimsMMTD},
     TT::Int, R::Int, K::Int,
-    simind::Vector{Int}; λ_indx::Union{nothing, λindxMMTD}=nothing)
+    simind::Vector{Int}; λ_indx::Union{Nothing, λindxMMTD}=nothing)
 
     nsim = length(simind)
     lossMat = zeros(Float64, nsim, nprime)
