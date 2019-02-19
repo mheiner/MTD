@@ -1,6 +1,6 @@
 # mmtd_inference.jl
 
-export ParamsMMTD, PriorMMTD, ModMMTD, λindxMMTD,
+export ParamsMMTD, PriorMMTD, ModMMTD, PostSimsMMTD, λindxMMTD,
   build_λ_indx, ZζtoZandζ, sim_mmtd, symmetricDirPrior_mmtd, transTensor_mmtd,
   counttrans_mmtd,
   mcmc_mmtd!, timemod!,
