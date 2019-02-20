@@ -645,12 +645,12 @@ end
 
 """
 mcmc!(model, n_keep[, save=true, report_filename="out_progress.txt",
-thin=1, jmpstart_iter=25, report_freq=500, monitor::Vector{Symb}=[:lΛ, :lλ, :lQ0, :lQ])
+thin=1, jmpstart_iter=25, report_freq=500, monitor::Vector{Symbol}=[:lΛ, :lλ, :lQ0, :lQ])
 """
 function mcmc!(model::ModMMTD, n_keep::Int, save::Bool=true,
     report_filename::String="out_progress.txt", thin::Int=1, jmpstart_iter::Int=25,
     report_freq::Int=10000;
-    monitor::Vector{Symb}=[:lΛ, :lλ, :lQ0, :lQ])
+    monitor::Vector{Symbol}=[:lΛ, :lλ, :lQ0, :lQ])
 
     ## output files
     report_file = open(report_filename, "a+")
@@ -722,20 +722,6 @@ function mcmc!(model::ModMMTD, n_keep::Int, save::Bool=true,
     end
 
 end
-
-
-
-## timing for benchmarks
-function timemod!(n::Int64, model::ModMMTD, niter::Int, outfilename::String)
-    outfile = open(outfilename, "a+")
-    write(outfile, "timing for $(niter) iterations each:\n")
-    for i in 1:n
-        tinfo = @timed mcmc_mmtd!(model, niter, false, outfilename)
-        write(outfile, "trial $(i), elapsed: $(tinfo[2]) seconds, allocation: $(tinfo[3]/1.0e6) Megabytes\n")
-    end
-    close(outfile)
-end
-
 
 
 """

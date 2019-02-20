@@ -1,6 +1,7 @@
 # general.jl
 
-export create_froms, count_trans_R, transTens_MLE, forecDist, deepcopyFields;
+export create_froms, count_trans_R, transTens_MLE, forecDist,
+    deepcopyFields, timemod!, etr;
 
 ## expand.grid() from R
 # using Iterators # (this is part of Base as of Julia 1.0)
@@ -147,12 +148,39 @@ function deepcopyFields(state::T, fields::Vector{Symbol}) where T
 end
 
 
-function postSimsInit(monitor::Vector{Symb}, n_keep::Int, init_state::Union{ParamsMTD, ParamsMTDg, ParamsMMTD})
+function postSimsInit(monitor::Vector{Symbol}, n_keep::Int, init_state::Union{ParamsMTD, ParamsMTDg, ParamsMMTD})
 
     state = deepcopyFields(init_state, monitor)
     state[:llik] = 0.0
 
-    sims = fill( state , n_keep )
+    sims = [ deepcopy(state) for i = 1:n_keep ]
 
     return sims
+end
+
+
+
+## MCMC timing for benchmarks
+function timemod!(n::Int64, model::Union{ModMTD, ModMTDg, ModMMTD}, niter::Int, outfilename::String)
+    outfile = open(outfilename, "a+")
+    write(outfile, "timing for $(niter) iterations each:\n")
+    for i in 1:n
+        tinfo = @timed mcmc!(model, niter, false, outfilename)
+        write(outfile, "trial $(i), elapsed: $(tinfo[2]) seconds, allocation: $(tinfo[3]/1.0e6) Megabytes\n")
+    end
+    close(outfile)
+end
+
+## estimate time remaining
+function etr(timestart::DateTime, n_keep::Int, thin::Int, outfilename::String)
+    timeendburn = now()
+    durperiter = (timeendburn - timestart).value / 1.0e5 # in milliseconds
+    milsecremaining = durperiter * (n_keep * thin)
+    estimatedfinish = now() + Dates.Millisecond(Int64(round(milsecremaining)))
+    report_file = open(outfilename, "a+")
+    write(report_file, "Completed burn-in at $(durperiter/1.0e3*1000.0) seconds per 1000 iterations \n
+      $(durperiter/1.0e3/60.0*1000.0) minutes per 1000 iterations \n
+      $(durperiter/1.0e3/60.0/60.0*1000.0) hours per 1000 iterations \n
+      estimated completion time $(estimatedfinish)")
+    close(report_file)
 end
