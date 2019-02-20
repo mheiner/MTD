@@ -1,6 +1,6 @@
 # gof.jl
 
-export lossL1, meanForecLoss_MTD, meanForecLoss_MTDg, meanForecLoss_MMTD;
+export lossL1, meanForecLoss;
 
 function lossL1(x::Vector{Float64}, y::Vector{Float64})
     @assert length(x)==length(y)
@@ -17,9 +17,10 @@ end
 
 
 function meanForecLoss(S::Vector{Int}, tprime::Vector{Int},
-    lossFn::Function, sims::Union{PostSimsMTD, PostSimsMTDg, PostSimsMMTD},
+    lossFn::Function, sims::Vector{Dict},
     TT::Int, R::Int, K::Int,
-    simind::Vector{Int}; λ_indx::Union{Nothing, λindxMMTD}=nothing)
+    simind::Vector{Int}; λ_indx::Union{Nothing, λindxMMTD}=nothing,
+    modeltype::String)
 
     nsim = length(simind)
     nprime = length(tprime)
@@ -32,10 +33,10 @@ function meanForecLoss(S::Vector{Int}, tprime::Vector{Int},
 
     for i in 1:nsim
         ii = deepcopy( simind[i] )
-        if typeof(sims) == PostSimsMMTD
-            M = length(sims.λ)
-            λ_now = [ deepcopy(sims.λ[m][ii,:]) for m in 1:M ]
-            Q_now = [ reshape( sims.Q[m][ii,:], fill(K, m+1)... ) for m in 1:M ]
+        if modeltype == "MMTD"
+            M = length(sims[1].λ)
+            λ_now = [ exp.(sims[ii][:lλ][m]) for m in 1:M ]
+            Q_now = [ exp.( sims[ii][:lQ][m] ) for m in 1:M ]
         end
 
         for j in 1:nprime
@@ -43,13 +44,15 @@ function meanForecLoss(S::Vector{Int}, tprime::Vector{Int},
             S_now = deepcopy( S[tt] )
             Slagrev_now = deepcopy( S[range(tt-1, step=-1, length=R)] )
 
-            if typeof(sims) == PostSimsMTD
-                forec = forecDist(Slagrev_now, sims.λ[ii,:], sims.Q[ii,:,:])
-            elseif typeof(sims) == PostSimsMTDg
-                forec = forecDist_MTDg(Slagrev_now, sims.λ[ii,:], sims.Q0[ii,:], [sims.Q[ii,ell,:,:] for ell = 1:R])
-            elseif typeof(sims) == PostSimsMMTD
-                forec = forecDist_MMTD(Slagrev_now, sims.Λ[ii,:], λ_now,
-                                       sims.Q0[ii,:], Q_now, λ_indx)
+            if modeltype == "MTD"
+                forec = forecDist(Slagrev_now, exp.(sims[ii][:lλ]),
+                    exp.(sims[ii][:lQ]))
+            elseif modeltype == "MTDg"
+                forec = forecDist_MTDg(Slagrev_now, exp.(sims[ii][:lλ]),
+                    exp.(sims[ii][:lQ0]), [ exp.(sims[ii][:lQ][ell]) for ell = 1:R ] )
+            elseif modeltype == "MMTD"
+                forec = forecDist_MMTD(Slagrev_now, exp.(sims[ii][:lΛ]), λ_now,
+                                       exp.(sims[ii][:lQ0]), Q_now, λ_indx)
             end
 
             St_vec = float([ (k == S_now) for k in 1:K ])
@@ -66,9 +69,10 @@ function meanForecLoss(S::Vector{Int}, tprime::Vector{Int},
 end
 function meanForecLoss(y::Vector{Int}, X::Matrix{Int}, P::Matrix{Float64},
     nprime::Int, lossFn::Function,
-    sims::Union{PostSimsMTD, PostSimsMTDg, PostSimsMMTD},
+    sims::Vector{Dict},
     TT::Int, R::Int, K::Int,
-    simind::Vector{Int}; λ_indx::Union{Nothing, λindxMMTD}=nothing)
+    simind::Vector{Int}; λ_indx::Union{Nothing, λindxMMTD}=nothing,
+    modeltype::String)
 
     nsim = length(simind)
     lossMat = zeros(Float64, nsim, nprime)
@@ -84,23 +88,25 @@ function meanForecLoss(y::Vector{Int}, X::Matrix{Int}, P::Matrix{Float64},
 
         ii = deepcopy( simind[i] )
 
-        if typeof(sims) == PostSimsMMTD
-            M = length(sims.λ)
-            λ_now = [ deepcopy(sims.λ[m][ii,:]) for m in 1:M ]
-            Q_now = [ reshape( sims.Q[m][ii,:], fill(K, m+1)... ) for m in 1:M ]
+        if modeltype == "MMTD"
+            M = length(sims[1].λ)
+            λ_now = [ exp.(sims[ii][:lλ][m]) for m in 1:M ]
+            Q_now = [ exp.( sims[ii][:lQ][m] ) for m in 1:M ]
         end
 
         for tt in 1:nprime
             S_now = deepcopy( y[tt] )
             Slagrev_now = deepcopy( X[tt,:] )
 
-            if typeof(sims) == PostSimsMTD
-                forec = forecDist(Slagrev_now, sims.λ[ii,:], sims.Q[ii,:,:])
-            elseif typeof(sims) == PostSimsMTDg
-                forec = forecDist_MTDg(Slagrev_now, sims.λ[ii,:], sims.Q0[ii,:], [sims.Q[ii,ell,:,:] for ell = 1:R])
-            elseif typeof(sims) == PostSimsMMTD
-                forec = forecDist_MMTD(Slagrev_now, sims.Λ[ii,:], λ_now,
-                                       sims.Q0[ii,:], Q_now, λ_indx)
+            if modeltype == "MTD"
+                forec = forecDist(Slagrev_now, exp.(sims[ii][:lλ]),
+                exp.(sims[ii][:lQ]))
+            elseif modeltype == "MTDg"
+                forec = forecDist_MTDg(Slagrev_now, exp.(sims[ii][:lλ]),
+                exp.(sims[ii][:lQ0]), [ exp.(sims[ii][:lQ][ell]) for ell = 1:R ] )
+            elseif modeltype == "MMTD"
+                forec = forecDist_MMTD(Slagrev_now, exp.(sims[ii][:lΛ]), λ_now,
+                exp.(sims[ii][:lQ0]), Q_now, λ_indx)
             end
 
             St_vec = float([ (k == S_now) for k in 1:K ])

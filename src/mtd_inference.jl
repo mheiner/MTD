@@ -1,9 +1,9 @@
 # mtd_inference.jl
 
-export ParamsMTD, PriorMTD, ModMTD, PostSimsMTD,
+export ParamsMTD, PriorMTD, ModMTD,
   sim_mtd, symmetricDirPrior_mtd, transTensor_mtd,
   counttrans_mtd,
-  mcmc_mtd!, timemod!, etr, llik_MTD;
+  mcmc!, timemod!, etr, llik_MTD;
 
 mutable struct ParamsMTD
   lλ::Vector{Float64}
@@ -30,21 +30,6 @@ mutable struct ModMTD
   iter::Int
 
   ModMTD(R, K, TT, S, prior, state) = new(R, K, TT, deepcopy(S), deepcopy(prior), deepcopy(state), 0)
-end
-
-mutable struct PostSimsMTD
-  λ::Matrix{Float64}
-  Q::Array{Float64}
-  ζ::Matrix{Int}
-  llik::Vector{Float64}
-end
-
-## outer constructor
-function PostSimsMTD(model::ModMTD, n_keep::Int, monitorS_len::Int)
-    PostSimsMTD( zeros(Float64, n_keep, model.R), # λ
-        zeros(Float64, n_keep, model.K, model.K), # Q
-        zeros(Int, n_keep, monitorS_len), # ζ
-        zeros(Float64, n_keep) #= llik =#  )
 end
 
 
@@ -389,23 +374,22 @@ end
 
 
 """
-mcmc_mtd!(model::ModMTD, n_keep::Int, save::Bool=true,
+mcmc!(model::ModMTD, n_keep::Int, save::Bool=true,
     report_filename::String="out_progress.txt", thin::Int=1, jmpstart_iter::Int=25,
     report_freq::Int=1000;
-    monitorS_indx::Vector{Int}=[1])
+    monitor::Vector{Symb}=[:lλ, :lQ])
 """
-function mcmc_mtd!(model::ModMTD, n_keep::Int, save::Bool=true,
+function mcmc!(model::ModMTD, n_keep::Int, save::Bool=true,
     report_filename::String="out_progress.txt", thin::Int=1, jmpstart_iter::Int=25,
     report_freq::Int=1000;
-    monitorS_indx::Vector{Int}=[1])
+    monitor::Vector{Symb}=[:lλ, :lQ])
 
     ## output files
     report_file = open(report_filename, "a+")
     write(report_file, "Commencing MCMC at $(Dates.now()) for $(n_keep * thin) iterations.\n")
 
     if save
-        monitorS_len = length(monitorS_indx)
-        sims = PostSimsMTD(model, n_keep, monitorS_len)
+        sims = postSimsInit(monitor, n_keep, model.state)
     end
 
     ## sampling
@@ -441,10 +425,10 @@ function mcmc_mtd!(model::ModMTD, n_keep::Int, save::Bool=true,
         end
 
         if save
-            @inbounds sims.λ[i,:] = exp.( model.state.lλ )
-            @inbounds sims.Q[i,:,:] = exp.( model.state.lQ )
-            @inbounds sims.ζ[i,:] = deepcopy(model.state.ζ[monitorS_indx])
-            @inbounds sims.llik[i] = llik_MTD(model.S, model.state.lλ, model.state.lQ)
+            for field in monitor
+              sims[i][field] = deepcopy(getfield(model.state, field))
+            end
+            sims[i][:llik] = llik_MTD(model.S, model.state.lλ, model.state.lQ)
         end
     end
 

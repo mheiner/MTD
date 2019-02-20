@@ -1,6 +1,6 @@
 # general.jl
 
-export create_froms, count_trans_R, transTens_MLE, forecDist;
+export create_froms, count_trans_R, transTens_MLE, forecDist, deepcopyFields;
 
 ## expand.grid() from R
 # using Iterators # (this is part of Base as of Julia 1.0)
@@ -131,4 +131,28 @@ function forecDist(Slagrev::Vector{Int}, λ::Vector{Float64}, Q::Matrix{Float64}
         end
     end
     w
+end
+
+
+
+## from Arthur Lui
+function deepcopyFields(state::T, fields::Vector{Symbol}) where T
+  substate = Dict{Symbol, Any}()
+
+  for field in fields
+    substate[field] = deepcopy(getfield(state, field))
+  end
+
+  return substate
+end
+
+
+function postSimsInit(monitor::Vector{Symb}, n_keep::Int, init_state::Union{ParamsMTD, ParamsMTDg, ParamsMMTD})
+
+    state = deepcopyFields(init_state, monitor)
+    state[:llik] = 0.0
+
+    sims = fill( state , n_keep )
+
+    return sims
 end

@@ -1,8 +1,8 @@
 # mtdg_inference.jl
 
-export ParamsMTDg, PriorMTDg, ModMTDg, PostSimsMTDg,
+export ParamsMTDg, PriorMTDg, ModMTDg,
   sim_mtdg, symmetricDirPrior_mtdg, transTensor_mtdg,
-  counttrans_mtdg, mcmc_mtdg!, timemod!, llik_MTDg,
+  counttrans_mtdg, mcmc!, timemod!, llik_MTDg,
   TankReduction, forecDist_MTDg;
 
 
@@ -34,22 +34,6 @@ mutable struct ModMTDg
   ModMTDg(R, K, TT, S, prior, state) = new(R, K, TT, deepcopy(S), deepcopy(prior), deepcopy(state), 0)
 end
 
-mutable struct PostSimsMTDg
-  λ::Matrix{Float64}
-  Q0::Matrix{Float64}
-  Q::Array{Float64}
-  ζ::Matrix{Int}
-  llik::Vector{Float64}
-end
-
-## outer constructor
-function PostSimsMTDg(model::ModMTDg, n_keep::Int, monitorS_len::Int)
-    PostSimsMTDg(zeros(Float64, n_keep, model.R + 1), # λ
-        zeros(Float64, n_keep, model.K), # Q0
-        zeros(Float64, n_keep, model.R, model.K, model.K), # Q
-        zeros(Int, n_keep, monitorS_len), # ζ
-        zeros(Float64, n_keep) #= llik =# )
-end
 
 """
     sim_mtdg(TT, nburn, R, K, λ, Q0, Q)
@@ -426,23 +410,22 @@ end
 
 
 """
-mcmc_mtdg!(model::ModMTDg, n_keep::Int, save::Bool=true,
+mcmc!(model::ModMTDg, n_keep::Int, save::Bool=true,
     report_filename::String="out_progress.txt", thin::Int=1, jmpstart_iter::Int=25,
     report_freq::Int=1000;
-    monitorS_indx::Vector{Int}=[1])
+    monitor::Vector{Symb}=[:lλ, :lQ0, :lQ])
 """
-function mcmc_mtdg!(model::ModMTDg, n_keep::Int, save::Bool=true,
+function mcmc!(model::ModMTDg, n_keep::Int, save::Bool=true,
     report_filename::String="out_progress.txt", thin::Int=1, jmpstart_iter::Int=25,
     report_freq::Int=1000;
-    monitorS_indx::Vector{Int}=[1])
+    monitor::Vector{Symb}=[:lλ, :lQ0, :lQ])
 
     ## output files
     report_file = open(report_filename, "a+")
     write(report_file, "Commencing MCMC at $(Dates.now()) for $(n_keep * thin) iterations.\n")
 
     if save
-        monitorS_len = length(monitorS_indx)
-        sims = PostSimsMTDg(model, n_keep, monitorS_len)
+        sims = postSimsInit(monitor, n_keep, model.state)
     end
 
     ## sampling
@@ -479,15 +462,13 @@ function mcmc_mtdg!(model::ModMTDg, n_keep::Int, save::Bool=true,
         end
 
         if save
-            @inbounds sims.λ[i,:] = exp.( model.state.lλ )
-            @inbounds sims.Q0[i,:] = exp.( model.state.lQ0 )
-            for ℓ in 1:model.R
-                @inbounds sims.Q[i,ℓ,:,:] = exp.( model.state.lQ[ℓ] )
+            for field in monitor
+              sims[i][field] = deepcopy(getfield(model.state, field))
             end
-            @inbounds sims.ζ[i,:] = deepcopy(model.state.ζ[monitorS_indx])
-            @inbounds sims.llik[i] = llik_MTDg(model.S, model.state.lλ,
+            sims[i][:llik] = llik_MTDg(model.S, model.state.lλ,
                 model.state.lQ0, model.state.lQ)
         end
+
     end
 
     close(report_file)
