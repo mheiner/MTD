@@ -1,6 +1,6 @@
 # gof.jl
 
-export lossL1, meanForecLoss;
+export lossL1, lossMissedClass, lossSqErr, meanForecLoss;
 
 function lossL1(x::Vector{Float64}, y::Vector{Float64})
     @assert length(x)==length(y)
@@ -19,7 +19,7 @@ end
 function meanForecLoss(S::Vector{Int}, tprime::Vector{Int},
     lossFn::Function, sims::Vector{Dict},
     TT::Int, R::Int, K::Int,
-    simind::Vector{Int}; λ_indx::Union{Nothing, λindxMMTD}=nothing,
+    simind::Array{Dict{Symbol,Any},1}; λ_indx::Union{Nothing, λindxMMTD}=nothing,
     modeltype::String)
 
     nsim = length(simind)
@@ -34,7 +34,7 @@ function meanForecLoss(S::Vector{Int}, tprime::Vector{Int},
     for i in 1:nsim
         ii = deepcopy( simind[i] )
         if modeltype == "MMTD"
-            M = length(sims[1].λ)
+            M = length(sims[1][:lλ])
             λ_now = [ exp.(sims[ii][:lλ][m]) for m in 1:M ]
             Q_now = [ exp.( sims[ii][:lQ][m] ) for m in 1:M ]
         end
@@ -69,7 +69,7 @@ function meanForecLoss(S::Vector{Int}, tprime::Vector{Int},
 end
 function meanForecLoss(y::Vector{Int}, X::Matrix{Int}, P::Matrix{Float64},
     nprime::Int, lossFn::Function,
-    sims::Vector{Dict},
+    sims::Array{Dict{Symbol,Any},1},
     TT::Int, R::Int, K::Int,
     simind::Vector{Int}; λ_indx::Union{Nothing, λindxMMTD}=nothing,
     modeltype::String)
@@ -89,7 +89,7 @@ function meanForecLoss(y::Vector{Int}, X::Matrix{Int}, P::Matrix{Float64},
         ii = deepcopy( simind[i] )
 
         if modeltype == "MMTD"
-            M = length(sims[1].λ)
+            M = length(sims[1][:lλ])
             λ_now = [ exp.(sims[ii][:lλ][m]) for m in 1:M ]
             Q_now = [ exp.( sims[ii][:lQ][m] ) for m in 1:M ]
         end
