@@ -387,6 +387,7 @@ function mcmc!(model::ModMTD, n_keep::Int, save::Bool=true,
     ## output files
     report_file = open(report_filename, "a+")
     write(report_file, "Commencing MCMC at $(Dates.now()) for $(n_keep * thin) iterations.\n")
+    close(report_file)
 
     if save
         sims = postSimsInit(monitor, n_keep, model.state)
@@ -420,7 +421,9 @@ function mcmc!(model::ModMTD, n_keep::Int, save::Bool=true,
 
             model.iter += 1
             if model.iter % report_freq == 0
+                report_file = open(report_filename, "a+")
                 write(report_file, "Iter $(model.iter) at $(Dates.now())\n")
+                close(report_file)
             end
         end
 
@@ -431,8 +434,6 @@ function mcmc!(model::ModMTD, n_keep::Int, save::Bool=true,
             sims[i][:llik] = llik_MTD(model.S, model.state.lλ, model.state.lQ)
         end
     end
-
-    close(report_file)
 
     if save
         return sims
