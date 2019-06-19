@@ -18,7 +18,7 @@ end
 
 function meanForecLoss(S::Vector{Int}, tprime::Vector{Int},
     lossFn::Function, sims::Vector{Dict},
-    TT::Int, R::Int, K::Int,
+    TT::Int, L::Int, K::Int,
     simind::Array{Dict{Symbol,Any},1}; λ_indx::Union{Nothing, λindxMMTD}=nothing,
     modeltype::String)
 
@@ -34,22 +34,22 @@ function meanForecLoss(S::Vector{Int}, tprime::Vector{Int},
     for i in 1:nsim
         ii = deepcopy( simind[i] )
         if modeltype == "MMTD"
-            M = length(sims[1][:lλ])
-            λ_now = [ exp.(sims[ii][:lλ][m]) for m in 1:M ]
-            Q_now = [ exp.( sims[ii][:lQ][m] ) for m in 1:M ]
+            R = length(sims[1][:lλ])
+            λ_now = [ exp.(sims[ii][:lλ][r]) for r in 1:R ]
+            Q_now = [ exp.( sims[ii][:lQ][r] ) for r in 1:R ]
         end
 
         for j in 1:nprime
             tt = deepcopy( tprime[j] )
             S_now = deepcopy( S[tt] )
-            Slagrev_now = deepcopy( S[range(tt-1, step=-1, length=R)] )
+            Slagrev_now = deepcopy( S[range(tt-1, step=-1, length=L)] )
 
             if modeltype == "MTD"
                 forec = forecDist(Slagrev_now, exp.(sims[ii][:lλ]),
                     exp.(sims[ii][:lQ]))
             elseif modeltype == "MTDg"
                 forec = forecDist_MTDg(Slagrev_now, exp.(sims[ii][:lλ]),
-                    exp.(sims[ii][:lQ0]), [ exp.(sims[ii][:lQ][ell]) for ell = 1:R ] )
+                    exp.(sims[ii][:lQ0]), [ exp.(sims[ii][:lQ][ell]) for ell = 1:L ] )
             elseif modeltype == "MMTD"
                 forec = forecDist_MMTD(Slagrev_now, exp.(sims[ii][:lΛ]), λ_now,
                                        exp.(sims[ii][:lQ0]), Q_now, λ_indx)
@@ -70,7 +70,7 @@ end
 function meanForecLoss(y::Vector{Int}, X::Matrix{Int}, P::Matrix{Float64},
     nprime::Int, lossFn::Function,
     sims::Array{Dict{Symbol,Any},1},
-    TT::Int, R::Int, K::Int,
+    TT::Int, L::Int, K::Int,
     simind::Vector{Int}; λ_indx::Union{Nothing, λindxMMTD}=nothing,
     modeltype::String)
 
@@ -89,9 +89,9 @@ function meanForecLoss(y::Vector{Int}, X::Matrix{Int}, P::Matrix{Float64},
         ii = deepcopy( simind[i] )
 
         if modeltype == "MMTD"
-            M = length(sims[1][:lλ])
-            λ_now = [ exp.(sims[ii][:lλ][m]) for m in 1:M ]
-            Q_now = [ exp.( sims[ii][:lQ][m] ) for m in 1:M ]
+            R = length(sims[1][:lλ])
+            λ_now = [ exp.(sims[ii][:lλ][r]) for r in 1:R ]
+            Q_now = [ exp.( sims[ii][:lQ][r] ) for r in 1:R ]
         end
 
         for tt in 1:nprime
@@ -103,7 +103,7 @@ function meanForecLoss(y::Vector{Int}, X::Matrix{Int}, P::Matrix{Float64},
                 exp.(sims[ii][:lQ]))
             elseif modeltype == "MTDg"
                 forec = forecDist_MTDg(Slagrev_now, exp.(sims[ii][:lλ]),
-                exp.(sims[ii][:lQ0]), [ exp.(sims[ii][:lQ][ell]) for ell = 1:R ] )
+                exp.(sims[ii][:lQ0]), [ exp.(sims[ii][:lQ][ell]) for ell = 1:L ] )
             elseif modeltype == "MMTD"
                 forec = forecDist_MMTD(Slagrev_now, exp.(sims[ii][:lΛ]), λ_now,
                 exp.(sims[ii][:lQ0]), Q_now, λ_indx)

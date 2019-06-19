@@ -9,7 +9,7 @@ export ParamsMMTD, PriorMMTD, ModMMTD, λindxMMTD,
 mutable struct ParamsMMTD
   lΛ::Vector{Float64}
   lλ::Vector{Vector{Float64}}
-  Zζ::Vector{Int} # will be length TT - R, mapped through ZζtoZandζ(), values start at 0 (intercept)
+  Zζ::Vector{Int} # will be length TT - L, mapped through ZζtoZandζ(), values start at 0 (intercept)
   lQ0::Vector{Float64}
   lQ::Vector{<:Array{Float64}} # organized so first index is now and lag 1 is the next index
 
@@ -37,8 +37,8 @@ mutable struct λindxMMTD
 end
 
 mutable struct ModMMTD
-  R::Int # maximal order
-  M::Int # largest order considered
+  L::Int # maximal order
+  R::Int # largest order considered
   K::Int # number of states
   TT::Int
   S::Vector{Int}
@@ -47,24 +47,24 @@ mutable struct ModMMTD
   λ_indx::λindxMMTD
   iter::Int
 
-  ModMMTD(R, M, K, TT, S, prior, state, λ_indx) = new(R, M, K, TT, deepcopy(S),
+  ModMMTD(L, R, K, TT, S, prior, state, λ_indx) = new(L, R, K, TT, deepcopy(S),
     deepcopy(prior), deepcopy(state), deepcopy(λ_indx), 0)
 end
 
 
 """
-    build_λ_indx(R, M)
+    build_λ_indx(L, R)
 
 ### Example
 ```julia
 λ_indx = build_λ_indx(3, 2)
 ```
 """
-function build_λ_indx(R::Int, M::Int)
-  indxs = [ collect(Combinatorics.combinations(1:R, m)) for m in 1:M ]
+function build_λ_indx(L::Int, R::Int)
+  indxs = [ collect(Combinatorics.combinations(1:L, r)) for r in 1:R ]
   lens = [ length(xx) for xx in indxs ]
   ζindx = vcat([collect(1:zz) for zz in lens]...)
-  Zindx = vcat([fill(m, lens[m]) for m in 1:M]...)
+  Zindx = vcat([fill(r, lens[r]) for r in 1:R]...)
   nZζ = sum(lens)
   Zζindx = hcat(Zindx, ζindx)
   λindxMMTD(indxs, lens, Zζindx, nZζ)
@@ -84,31 +84,31 @@ end
 
 
 """
-    sim_mmtd(TT, nburn, R, M, K, λ_indx, Λ, λ, Q0, Q)
+    sim_mmtd(TT, nburn, L, R, K, λ_indx, Λ, λ, Q0, Q)
 """
-function sim_mmtd(TT::Int, nburn::Int, R::Int, M::Int, K::Int, λ_indx::λindxMMTD,
+function sim_mmtd(TT::Int, nburn::Int, L::Int, R::Int, K::Int, λ_indx::λindxMMTD,
   Λ::Array{Float64}, λ::Array{Vector{Float64}},
   Q0::Vector{Float64}, Q::Vector{<:Array{Float64}}, Xtras::Bool=false)
 
   Nsim = nburn + TT
 
-  Z = [ StatsBase.sample(Weights(Λ)) - 1 for i in 1:(Nsim-R) ]
-  ζ = [ StatsBase.sample(Weights(λ[m])) for i in 1:(Nsim-R), m in 1:M ]
+  Z = [ StatsBase.sample(Weights(Λ)) - 1 for i in 1:(Nsim-L) ]
+  ζ = [ StatsBase.sample(Weights(λ[m])) for i in 1:(Nsim-L), m in 1:R ]
 
   S = Vector{Int}(undef, Nsim)
-  S[1:R] = StatsBase.sample(1:K, R)
+  S[1:L] = StatsBase.sample(1:K, L)
 
   if Xtras
       Pvecs = Matrix{Float64}(undef, Nsim, K)
-      Pvecs[1:R, :] .= 0.0
+      Pvecs[1:L, :] .= 0.0
   end
 
-  for tt in (R+1):(Nsim)
-    i = tt - R
+  for tt in (L+1):(Nsim)
+    i = tt - L
     if Z[i] == 0
         pvec = deepcopy(Q0)
     else
-        Slagrev_now = deepcopy(S[range(tt-1, step=-1, length=R)])
+        Slagrev_now = deepcopy(S[range(tt-1, step=-1, length=L)])
         pvec = deepcopy( Q[Z[i]][:, Slagrev_now[λ_indx.indxs[Z[i]][ζ[i,Z[i]]]]...] )
     end
 
@@ -119,103 +119,102 @@ function sim_mmtd(TT::Int, nburn::Int, R::Int, M::Int, K::Int, λ_indx::λindxMM
   end
 
   if Xtras
-      S[(nburn+1):(Nsim)], Z[(nburn+1):(Nsim-R)], ζ[(nburn+1):(Nsim-R),:], Pvecs[(nburn+1):(Nsim),:]
+      S[(nburn+1):(Nsim)], Z[(nburn+1):(Nsim-L)], ζ[(nburn+1):(Nsim-L),:], Pvecs[(nburn+1):(Nsim),:]
   else
-      S[(nburn+1):(Nsim)], Z[(nburn+1):(Nsim-R)], ζ[(nburn+1):(Nsim-R),:]
+      S[(nburn+1):(Nsim)], Z[(nburn+1):(Nsim-L)], ζ[(nburn+1):(Nsim-L),:]
   end
 end
 
 
 """
-    symmetricPrior_mmtd(size_Λ, size_λ, size_Q0, size_Q, R, M, K, λ_indx)
+    symmetricPrior_mmtd(size_Λ, size_λ, size_Q0, size_Q, L, R, K, λ_indx)
 """
 function symmetricDirPrior_mmtd(size_Λ::Float64, size_λ::Float64,
     size_Q::Float64, size_Q0::Float64,
-  R::Int, M::Int, K::Int, λ_indx::λindxMMTD)
+  L::Int, R::Int, K::Int, λ_indx::λindxMMTD)
 
   # λ_indx.lens contains a tuple of lengths of λ vectors
 
-  α0_Λ = fill( size_Λ / float(M), M)
-  α0_λ = [ fill( size_λ / float(λ_indx.lens[m]), λ_indx.lens[m] ) for m in 1:M ]
+  α0_Λ = fill( size_Λ / float(R), R)
+  α0_λ = [ fill( size_λ / float(λ_indx.lens[r]), λ_indx.lens[r] ) for r in 1:R ]
   α0_Q0 = fill( size_Q0 / float(K), K )
   a0_Q = size_Q / float(K)
-  # α0_Q = [ fill( a0_Q, (K, K^(m)) ) for m in 1:M ]
-  α0_Q = [ fill( a0_Q, fill(K, (m+1))... ) for m in 1:M ]
+  α0_Q = [ fill( a0_Q, fill(K, (r+1))... ) for r in 1:R ]
 
   (α0_Λ, α0_λ, α0_Q0, α0_Q)
 end
 
 
 """
-    transTensor_mmtd(R, M, K, λ_indx, Λ, λ, Q0, Q)
+    transTensor_mmtd(L, R, K, λ_indx, Λ, λ, Q0, Q)
 
 Calculate full transition tensor from Λ, λ, and Q.
 """
-function transTensor_mmtd(R::Int, M::Int, K::Int, λ_indx::λindxMMTD,
+function transTensor_mmtd(L::Int, R::Int, K::Int, λ_indx::λindxMMTD,
   Λ::Vector{Float64}, λ::Vector{Vector{Float64}},
   Q0::Vector{Float64}, Q::Vector{<:Array{Float64}})
 
-  froms, nfroms = create_froms(K, R) # in this case, ordered by now, lag1, lag2, etc.
+  froms, nfroms = create_froms(K, L) # in this case, ordered by now, lag1, lag2, etc.
   Ωmat = zeros(Float64, (K, nfroms))
   for i in 1:nfroms
     for k in 1:K
         Ωmat[k,i] += Λ[1] * Q0[k]
-      for m in 1:M
-        for ℓ in 1:λ_indx.lens[m]
-            Ωmat[k,i] += Λ[m+1] .* λ[m][ℓ] .* Q[m][k,froms[i][[λ_indx.indxs[m][ℓ]]...]...]
+      for r in 1:R
+        for ℓ in 1:λ_indx.lens[r]
+            Ωmat[k,i] += Λ[r+1] .* λ[r][ℓ] .* Q[r][k,froms[i][[λ_indx.indxs[r][ℓ]]...]...]
         end
       end
     end
   end
-  reshape(Ωmat, fill(K,R+1)...)
+  reshape(Ωmat, fill(K,L+1)...)
 end
 
 
 """
-rpost_lΛ_mmtd(α0_Λ, Z, M)
+rpost_lΛ_mmtd(α0_Λ, Z, R)
 """
-function rpost_lΛ_mmtd(α0_Λ::Vector{Float64}, Z::Vector{Int}, M::Int)
-    Nz = StatsBase.counts(Z, 0:M)
+function rpost_lΛ_mmtd(α0_Λ::Vector{Float64}, Z::Vector{Int}, R::Int)
+    Nz = StatsBase.counts(Z, 0:R)
     α1_Λ = α0_Λ .+ Nz
     SparseProbVec.rDirichlet(α1_Λ, logout=true)
 end
-function rpost_lΛ_mmtd(prior::SparseDirMix, Z::Vector{Int}, M::Int)
-    Nz = StatsBase.counts(Z, 0:M)
+function rpost_lΛ_mmtd(prior::SparseDirMix, Z::Vector{Int}, R::Int)
+    Nz = StatsBase.counts(Z, 0:R)
     α1_Λ = prior.α .+ Nz
     d = SparseProbVec.SparseDirMix(α1_Λ, prior.β)
     SparseProbVec.rand(d, logout=true)
 end
-function rpost_lΛ_mmtd(prior::SBMprior, Z::Vector{Int}, M::Int)
-    Nz = StatsBase.counts(Z, 0:M)
+function rpost_lΛ_mmtd(prior::SBMprior, Z::Vector{Int}, R::Int)
+    Nz = StatsBase.counts(Z, 0:R)
     post_lΛ = SparseProbVec.SBM_multinom_post(prior, Nz)
     SparseProbVec.rand(post_lΛ, logout=true)
 end
 
 """
-    rpost_lλ_mmtd(prior, Zandζ, λ_lens, M)
+    rpost_lλ_mmtd(prior, Zandζ, λ_lens, R)
 """
 function rpost_lλ_mmtd(prior::Vector{Union{Vector{Float64}, SparseDirMix, SBMprior}},
     Zandζ::Matrix{Int},
-    λ_lens::Vector{Int}, M::Int)
+    λ_lens::Vector{Int}, R::Int)
 
-    lλ_out = [ Vector{Float64}(undef, λ_lens[m]) for m in 1:M ]
+    lλ_out = [ Vector{Float64}(undef, λ_lens[r]) for r in 1:R ]
     Z = deepcopy(Zandζ[:,1])
     ζ = deepcopy(Zandζ[:,2])
 
-    for m in 1:M
-        Zmindx = findall(Z .== m)
-        Nζ = StatsBase.counts(ζ[Zmindx], 1:λ_lens[m])
+    for r in 1:R
+        Zrindx = findall(Z .== r)
+        Nζ = StatsBase.counts(ζ[Zrindx], 1:λ_lens[r])
 
-        if typeof(prior[m]) == Vector{Float64}
-            α1_λ = prior[m] .+ Nζ
-            lλ_out[m] = SparseProbVec.rDirichlet(α1_λ, logout=true)
-        elseif typeof(prior[m]) == SparseDirMix
-            α1_λ = prior[m].α .+ Nζ
-            d = SparseDirMix(α1_λ, prior[m].β)
-            lλ_out[m] = SparseProbVec.rand(d, logout=true)
-        elseif typeof(prior[m]) == SBMprior
-            post_lλ = SparseProbVec.SBM_multinom_post(prior[m], Nζ)
-            lλ_out[m] = SparseProbVec.rand(post_lλ, logout=true)
+        if typeof(prior[r]) == Vector{Float64}
+            α1_λ = prior[r] .+ Nζ
+            lλ_out[r] = SparseProbVec.rDirichlet(α1_λ, logout=true)
+        elseif typeof(prior[r]) == SparseDirMix
+            α1_λ = prior[r].α .+ Nζ
+            d = SparseDirMix(α1_λ, prior[r].β)
+            lλ_out[r] = SparseProbVec.rand(d, logout=true)
+        elseif typeof(prior[r]) == SBMprior
+            post_lλ = SparseProbVec.SBM_multinom_post(prior[r], Nζ)
+            lλ_out[r] = SparseProbVec.rand(post_lλ, logout=true)
         end
     end
 
@@ -225,40 +224,40 @@ end
 
 """
     counttrans_mmtd(S::Vector{Int}, TT::Int, Zandζ::Matrix{Int},
-        λ_indx::λindxMMTD, R::Int, M::Int, K::Int)
+        λ_indx::λindxMMTD, L::Int, R::Int, K::Int)
 
     Indexing on ouput is [t, t-1, t-2, etc.]
 
     ### Example
     ```julia
+    L = 2
     R = 2
-    M = 2
     K = 3
     TT = 12
     S = [1,2,1,3,3,1,2,1,3,2,1,1]
     Zandζ = [1 2; 0 0; 1 2; 1 1; 2 1; 1 2; 2 1; 2 1; 2 1; 1 1]
-    λ_indx = build_λ_indx(R, M)
-    counttrans_mmtd(S, TT, Zandζ, λ_indx, R, M, K)
+    λ_indx = build_λ_indx(L, R)
+    counttrans_mmtd(S, TT, Zandζ, λ_indx, L, R, K)
     ```
 """
 function counttrans_mmtd(S::Vector{Int}, TT::Int, Zandζ::Matrix{Int},
-  λ_indx::λindxMMTD, R::Int, M::Int, K::Int)
+  λ_indx::λindxMMTD, L::Int, R::Int, K::Int)
 
   Z = deepcopy(Zandζ[:,1])
   ζ = deepcopy(Zandζ[:,2])
 
   ## initialize
   N0_out = zeros(Int, K)
-  N_out = [ zeros(Int, fill(K, m+1)...) for m in 1:M ]
+  N_out = [ zeros(Int, fill(K, r+1)...) for r in 1:R ]
 
   ## pass through data and add counts
-  for tt in (R+1):(TT)
-    Z_now = Z[tt-R]
+  for tt in (L+1):(TT)
+    Z_now = Z[tt-L]
     if Z_now == 0
         N0_out[ S[tt] ] += 1
     else
-        Slagrev_now = S[range(tt-1, step=-1, length=R)]
-        N_out[Z_now][append!( [deepcopy(S[tt])], deepcopy(Slagrev_now[ λ_indx.indxs[Z_now][ζ[tt-R]] ]) )...] += 1
+        Slagrev_now = S[range(tt-1, step=-1, length=L)]
+        N_out[Z_now][append!( [deepcopy(S[tt])], deepcopy(Slagrev_now[ λ_indx.indxs[Z_now][ζ[tt-L]] ]) )...] += 1
     end
   end
 
@@ -267,32 +266,32 @@ end
 
 
 """
-    rpost_lQ_mmtd(S, TT, prior, Z, ζ, λ_indx, R, M, K)
+    rpost_lQ_mmtd(S, TT, prior, Z, ζ, λ_indx, L, R, K)
 """
 function rpost_lQ_mmtd(S::Vector{Int}, TT::Int,
   prior_Q0::Vector{Float64}, prior_Q::Vector{<:Array{Float64}},
   Zandζ::Matrix{Int},
-  λ_indx::λindxMMTD, R::Int, M::Int, K::Int)
+  λ_indx::λindxMMTD, L::Int, R::Int, K::Int)
 
-  N0, N = counttrans_mmtd(S, TT, Zandζ, λ_indx, R, M, K) # N is a vector of arrays
+  N0, N = counttrans_mmtd(S, TT, Zandζ, λ_indx, L, R, K) # N is a vector of arrays
 
   ## initialize
   α0_Q0 = deepcopy(prior_Q0)
   α0_Q = deepcopy(prior_Q) # vector of arrays
-  lQ_mats = [ Matrix{Float64}(undef, K, K^m) for m in 1:M ]
-  lQ_out = [ reshape(lQ_mats[m], fill(K, m+1)...) for m in 1:M ]
+  lQ_mats = [ Matrix{Float64}(undef, K, K^r) for r in 1:R ]
+  lQ_out = [ reshape(lQ_mats[r], fill(K, r+1)...) for r in 1:R ]
 
   α1_Q0 = α0_Q0 .+ N0
   lQ0_out = SparseProbVec.rDirichlet(α1_Q0, logout=true)
 
-  for m in 1:M
-    ncol = K^m
-    α1_Q = α0_Q[m] .+ N[m]
+  for r in 1:R
+    ncol = K^r
+    α1_Q = α0_Q[r] .+ N[r]
     α1_Q_mat = reshape(α1_Q, (K, ncol))
     for j in 1:ncol
-      lQ_mats[m][:,j] = SparseProbVec.rDirichlet(α1_Q_mat[:,j], logout=true)
+      lQ_mats[r][:,j] = SparseProbVec.rDirichlet(α1_Q_mat[:,j], logout=true)
     end
-    lQ_out[m] = reshape(lQ_mats[m], fill(K, m+1)...)
+    lQ_out[r] = reshape(lQ_mats[r], fill(K, r+1)...)
   end
 
   lQ0_out, lQ_out
@@ -301,29 +300,29 @@ function rpost_lQ_mmtd(S::Vector{Int}, TT::Int,
   prior_Q0::Vector{Float64},
   prior_Q::Vector{<:Array{SparseDirMix}},
   Zandζ::Matrix{Int},
-  λ_indx::λindxMMTD, R::Int, M::Int, K::Int)
+  λ_indx::λindxMMTD, L::Int, R::Int, K::Int)
 
-  N0, N = counttrans_mmtd(S, TT, Zandζ, λ_indx, R, M, K)
+  N0, N = counttrans_mmtd(S, TT, Zandζ, λ_indx, L, R, K)
 
-  prior_Q_vec = [ reshape(prior_Q[m], K^m ) for m in 1:M ]
+  prior_Q_vec = [ reshape(prior_Q[r], K^r ) for r in 1:R ]
 
   ## initialize
   α0_Q0 = deepcopy(prior_Q0)
-  lQ_mats = [ Matrix{Float64}(undef, K, K^m) for m in 1:M ]
-  lQ_out = [ reshape(lQ_mats[m], fill(K, m+1)...) for m in 1:M ]
+  lQ_mats = [ Matrix{Float64}(undef, K, K^r) for r in 1:R ]
+  lQ_out = [ reshape(lQ_mats[r], fill(K, r+1)...) for r in 1:R ]
 
   α1_Q0 = α0_Q0 .+ N0
   lQ0_out = SparseProbVec.rDirichlet(α1_Q0, logout=true)
 
-  for m in 1:M
-    ncol = K^m
-    Nmat = reshape(N[m], (K, ncol))
+  for r in 1:R
+    ncol = K^r
+    Nmat = reshape(N[r], (K, ncol))
     for j in 1:ncol
-      α1 = prior_Q_vec[m][j].α .+ Nmat[:,j]
-      d = SparseProbVec.SparseDirMix(α1, prior_Q_vec[m][j].β)
-      lQ_mats[m][:,j] = SparseProbVec.rand(d, logout=true)
+      α1 = prior_Q_vec[r][j].α .+ Nmat[:,j]
+      d = SparseProbVec.SparseDirMix(α1, prior_Q_vec[r][j].β)
+      lQ_mats[r][:,j] = SparseProbVec.rand(d, logout=true)
     end
-    lQ_out[m] = reshape(lQ_mats[m], fill(K, m+1)...)
+    lQ_out[r] = reshape(lQ_mats[r], fill(K, r+1)...)
   end
 
   lQ0_out, lQ_out
@@ -331,28 +330,28 @@ end
 function rpost_lQ_mmtd(S::Vector{Int}, TT::Int,
     prior_Q0::Vector{Float64},
     prior_Q::Vector{<:Array{SBMprior}},
-    Zandζ::Matrix{Int}, λ_indx::λindxMMTD, R::Int, M::Int, K::Int)
+    Zandζ::Matrix{Int}, λ_indx::λindxMMTD, L::Int, R::Int, K::Int)
 
-  N0, N = counttrans_mmtd(S, TT, Zandζ, λ_indx, R, M, K)
+  N0, N = counttrans_mmtd(S, TT, Zandζ, λ_indx, L, R, K)
 
-  prior_Q_vec = [ reshape(prior[m], K^m ) for m in 1:M ]
+  prior_Q_vec = [ reshape(prior[r], K^r ) for r in 1:R ]
 
   ## initialize
   α0_Q0 = deepcopy(prior_Q0)
-  lQ_mats = [ Matrix{Float64}(undef, K, K^m) for m in 1:M ]
-  lQ_out = [ reshape(lQ_mats[m], fill(K, m+1)...) for m in 1:M ]
+  lQ_mats = [ Matrix{Float64}(undef, K, K^r) for r in 1:R ]
+  lQ_out = [ reshape(lQ_mats[r], fill(K, r+1)...) for r in 1:R ]
 
   α1_Q0 = α0_Q0 .+ N0
   lQ0_out = SparseProbVec.rDirichlet(α1_Q0, logout=true)
 
-  for m in 1:M
-    ncol = K^m
-    Nmat = reshape(N[m], (K, ncol))
+  for r in 1:R
+    ncol = K^r
+    Nmat = reshape(N[r], (K, ncol))
     for j in 1:ncol
-        d = SparseProbVec.SBM_multinom_post(prior_Q_vec[m][j], Nmat[:,j])
-        lQ_mats[m][:,j] = SparseProbVec.rand(d, logout=true)
+        d = SparseProbVec.SBM_multinom_post(prior_Q_vec[r][j], Nmat[:,j])
+        lQ_mats[r][:,j] = SparseProbVec.rand(d, logout=true)
     end
-    lQ_out[m] = reshape(lQ_mats[m], fill(K, m+1)...)
+    lQ_out[r] = reshape(lQ_mats[r], fill(K, r+1)...)
   end
 
   lQ0_out, lQ_out
@@ -360,7 +359,7 @@ end
 
 
 """
-    rpost_Zζ_marg(S, Zζ_old, λ_indx, prior_Q, lΛ, lλ, TT, R, K)
+    rpost_Zζ_marg(S, Zζ_old, λ_indx, prior_Q, lΛ, lλ, TT, L, K)
 
     Full conditinal updates for Zζ marginalizing over Q
 """
@@ -369,7 +368,7 @@ function rpost_Zζ_marg(S::Vector{Int}, Zζ_old::Vector{Int}, λ_indx::λindxMMT
     prior_Q::Vector{<:Array{Float64}},
     lΛ::Vector{Float64},
     lλ::Vector{Vector{Float64}},
-    TT::Int, R::Int, M::Int, K::Int)
+    TT::Int, L::Int, R::Int, K::Int)
 
   α0_Q0 = deepcopy(prior_Q0)
   α0_Q = deepcopy(prior_Q) # vector of arrays
@@ -378,23 +377,23 @@ function rpost_Zζ_marg(S::Vector{Int}, Zζ_old::Vector{Int}, λ_indx::λindxMMT
   Zandζ_now = ZζtoZandζ(Zζ_out, λ_indx) # won't get updated
 
   ## calculate current log marginal likelihood
-  N0_now, N_now = counttrans_mmtd(S, TT, Zandζ_now, λ_indx, R, M, K) # vector of arrays, indices in reverse time
+  N0_now, N_now = counttrans_mmtd(S, TT, Zandζ_now, λ_indx, L, R, K) # vector of arrays, indices in reverse time
 
   α1_Q0 = α0_Q0 .+ N0_now # gets re-used and updated
   α1_Q = α0_Q .+ N_now # gets re-used and updated
-  α1_Q_mats = [ reshape(α1_Q[m], K, K^m) for m in 1:M ] # used only for initial calculation
+  α1_Q_mats = [ reshape(α1_Q[r], K, K^r) for r in 1:R ] # used only for initial calculation
 
   llikmarg = SparseProbVec.lmvbeta( α1_Q0 )
-  for m in 1:M
-      for kk in 1:(K^m)
-          llikmarg += SparseProbVec.lmvbeta( α1_Q_mats[m][:,kk] )
+  for r in 1:R
+      for kk in 1:(K^r)
+          llikmarg += SparseProbVec.lmvbeta( α1_Q_mats[r][:,kk] )
       end
   end
 
   ## for each time point, modify llikmarg accordingly
-  for i in 1:(TT-R)  # i indexes Zζ, tt indexes S
-    tt = i + R
-    Slagrev_now = S[range(tt-1, step=-1, length=R)]
+  for i in 1:(TT-L)  # i indexes Zζ, tt indexes S
+    tt = i + L
+    Slagrev_now = S[range(tt-1, step=-1, length=L)]
 
     if Zζ_out[i] == 0
         Zold, ζold = 0, 0
@@ -460,30 +459,30 @@ function rpost_Zζ_marg(S::Vector{Int}, Zζ_old::Vector{Int},
     prior_Q::Union{Vector{<:Array{SparseDirMix}}, Vector{<:Array{SBMprior}}},
     lΛ::Vector{Float64},
     lλ::Vector{Vector{Float64}},
-    TT::Int, R::Int, M::Int, K::Int)
+    TT::Int, L::Int, R::Int, K::Int)
 
   α0_Q0 = deepcopy(prior_Q0)
 
   Zζ_out = deepcopy(Zζ_old)
   Zandζ_now = ZζtoZandζ(Zζ_out, λ_indx) # won't get updated
-  prior_Q_vec = [ reshape(prior_Q[m], (K^m)) for m in 1:M ]
+  prior_Q_vec = [ reshape(prior_Q[r], (K^r)) for r in 1:R ]
 
   ## calculate current log marginal likelihood
-  N0_now, N_now = counttrans_mmtd(S, TT, Zandζ_now, λ_indx, R, M, K) # vector of arrays, indices in reverse time
-  N_now_mats = [ reshape(N_now[m], K, K^m) for m in 1:M ] # Nmats won't be updated, only llikmarg, α1_Q0, and N_now
+  N0_now, N_now = counttrans_mmtd(S, TT, Zandζ_now, λ_indx, L, R, K) # vector of arrays, indices in reverse time
+  N_now_mats = [ reshape(N_now[r], K, K^r) for r in 1:R ] # Nmats won't be updated, only llikmarg, α1_Q0, and N_now
 
   α1_Q0 = α0_Q0 .+ N0_now # gets re-used and updated
 
   llikmarg = SparseProbVec.lmvbeta( α1_Q0 )
-  for m in 1:M
-      for ℓ in 1:(K^m)
-          llikmarg += SparseProbVec.logMarginal( prior_Q_vec[m][ℓ], N_now_mats[m][:,ℓ] )
+  for r in 1:R
+      for ℓ in 1:(K^r)
+          llikmarg += SparseProbVec.logMarginal( prior_Q_vec[r][ℓ], N_now_mats[r][:,ℓ] )
       end
   end
 
-  for i in 1:(TT-R)  # i indexes ζ, tt indexes S
-      tt = i + R
-      Slagrev_now = S[range(tt-1, step=-1, length=R)]
+  for i in 1:(TT-L)  # i indexes ζ, tt indexes S
+      tt = i + L
+      Slagrev_now = S[range(tt-1, step=-1, length=L)]
 
       if Zζ_out[i] == 0
           Zold, ζold = 0, 0
@@ -554,7 +553,7 @@ end
     MetropIndep_ΛλZζ(S, lΛ_old, lλ_old, Zζ_old,
         prior_Λ, prior_λ, prior_Q,
         λ_indx,
-        TT, R, M, K)
+        TT, L, R, K)
 
     Independence Metropolis step for Λ, λ, Z, and ζ.
 """
@@ -565,7 +564,7 @@ function MetropIndep_ΛλZζ(S::Vector{Int}, lΛ_old::Vector{Float64},
     prior_Q0::Vector{Float64}, # always Dirichlet on intercept
     prior_Q::Union{Vector{<:Array{Float64}}, Vector{<:Array{SparseDirMix}}, Vector{<:Array{SBMprior}}},
     λ_indx::λindxMMTD,
-    TT::Int, R::Int, M::Int, K::Int)
+    TT::Int, L::Int, R::Int, K::Int)
 
   if typeof(prior_Λ) == Vector{Float64}
       lΛ_cand = SparseProbVec.rDirichlet(prior_Λ, logout=true)
@@ -573,13 +572,13 @@ function MetropIndep_ΛλZζ(S::Vector{Int}, lΛ_old::Vector{Float64},
       lΛ_cand = SparseProbVec.rand(prior_Λ, logout=true)
   end
 
-  lλ_cand = [ Vector{Float64}(undef, λ_indx.lens[m]) for m in 1:M ]
+  lλ_cand = [ Vector{Float64}(undef, λ_indx.lens[r]) for r in 1:R ]
 
-  for m in 1:M
-      if typeof(prior_λ[m]) == Vector{Float64}
-          lλ_cand[m] = SparseProbVec.rDirichlet(prior_λ[m], logout=true)
-      elseif typeof(prior_λ[m]) <: Union{SparseDirMix, SBMprior}
-          lλ_cand[m] = SparseProbVec.rand(prior_λ[m], logout=true)
+  for r in 1:R
+      if typeof(prior_λ[r]) == Vector{Float64}
+          lλ_cand[r] = SparseProbVec.rDirichlet(prior_λ[r], logout=true)
+      elseif typeof(prior_λ[r]) <: Union{SparseDirMix, SBMprior}
+          lλ_cand[r] = SparseProbVec.rand(prior_λ[r], logout=true)
       end
   end
 
@@ -587,41 +586,41 @@ function MetropIndep_ΛλZζ(S::Vector{Int}, lΛ_old::Vector{Float64},
   pushfirst!(lΛλ_cand, lΛ_cand[1])
   Λλ_cand = exp.(lΛλ_cand)
 
-  Zζ_cand = [ StatsBase.sample( Weights( Λλ_cand ) ) - 1 for i in 1:(TT-R) ]
+  Zζ_cand = [ StatsBase.sample( Weights( Λλ_cand ) ) - 1 for i in 1:(TT-L) ]
   Zandζ_cand = ZζtoZandζ(Zζ_cand, λ_indx)
   Zandζ_old = ZζtoZandζ(Zζ_old, λ_indx)
 
-  N0_cand, N_cand = counttrans_mmtd(S, TT, Zandζ_cand, λ_indx, R, M, K)
-  N0_old, N_old = counttrans_mmtd(S, TT, Zandζ_old, λ_indx, R, M, K)
+  N0_cand, N_cand = counttrans_mmtd(S, TT, Zandζ_cand, λ_indx, L, R, K)
+  N0_old, N_old = counttrans_mmtd(S, TT, Zandζ_old, λ_indx, L, R, K)
 
-  N_cand_mats = [ reshape(N_cand[m], K, K^m) for m in 1:M ]
-  N_old_mats = [ reshape(N_old[m], K, K^m) for m in 1:M ]
+  N_cand_mats = [ reshape(N_cand[r], K, K^r) for r in 1:R ]
+  N_old_mats = [ reshape(N_old[r], K, K^r) for r in 1:R ]
 
   llikmarg_cand = SparseProbVec.lmvbeta(prior_Q0 .+ N0_cand)
   llikmarg_old = SparseProbVec.lmvbeta(prior_Q0 .+ N0_old)
 
   if typeof(prior_Q) <: Vector{<:Array{Float64}}
 
-      prior_Q_mats = [ reshape(prior_Q[m], K, K^m) for m in 1:M ]
+      prior_Q_mats = [ reshape(prior_Q[r], K, K^r) for r in 1:R ]
 
-      for m in 1:M
-          for ℓ in 1:(K^m)
-            α_now = deepcopy(prior_Q_mats[m][:,ℓ])
-            llikmarg_cand += SparseProbVec.lmvbeta( N_cand_mats[m][:,ℓ] + α_now )
-            llikmarg_old += SparseProbVec.lmvbeta( N_old_mats[m][:,ℓ] + α_now )
+      for r in 1:R
+          for ℓ in 1:(K^r)
+            α_now = deepcopy(prior_Q_mats[r][:,ℓ])
+            llikmarg_cand += SparseProbVec.lmvbeta( N_cand_mats[r][:,ℓ] + α_now )
+            llikmarg_old += SparseProbVec.lmvbeta( N_old_mats[r][:,ℓ] + α_now )
           end
       end
 
   elseif typeof(prior_Q) <: Union{Vector{<:Array{SparseDirMix}}, Vector{<:Array{SBMprior}}}
 
-      prior_Q_vec = [ reshape(prior_Q[m], (K^m)) for m in 1:M ]
+      prior_Q_vec = [ reshape(prior_Q[r], (K^r)) for r in 1:R ]
 
-      for m in 1:M
-          for ℓ in 1:(K^m)
-              llikmarg_cand += SparseProbVec.logMarginal( prior_Q_vec[m][ℓ],
-                                                N_cand_mats[m][:,ℓ] )
-              llikmarg_old += SparseProbVec.logMarginal( prior_Q_vec[m][ℓ],
-                                                N_old_mats[m][:,ℓ] )
+      for r in 1:R
+          for ℓ in 1:(K^r)
+              llikmarg_cand += SparseProbVec.logMarginal( prior_Q_vec[r][ℓ],
+                                                N_cand_mats[r][:,ℓ] )
+              llikmarg_old += SparseProbVec.logMarginal( prior_Q_vec[r][ℓ],
+                                                N_old_mats[r][:,ℓ] )
           end
       end
 
@@ -672,7 +671,7 @@ function mcmc!(model::ModMMTD, n_keep::Int, save::Bool=true,
                     model.state.lΛ, model.state.lλ, model.state.Zζ,
                     model.prior.Λ, model.prior.λ, model.prior.Q0, model.prior.Q,
                     model.λ_indx,
-                    model.TT, model.R, model.M, model.K)
+                    model.TT, model.L, model.R, model.K)
 
                 Zandζnow = ZζtoZandζ(model.state.Zζ, model.λ_indx)
 
@@ -682,20 +681,20 @@ function mcmc!(model::ModMMTD, n_keep::Int, save::Bool=true,
                     model.λ_indx,
                     model.prior.Q0, model.prior.Q,
                     model.state.lΛ, model.state.lλ,
-                    model.TT, model.R, model.M, model.K)
+                    model.TT, model.L, model.R, model.K)
 
                 Zandζnow = ZζtoZandζ(model.state.Zζ, model.λ_indx)
 
-                model.state.lΛ = rpost_lΛ_mmtd(model.prior.Λ, Zandζnow[:,1], model.M)
+                model.state.lΛ = rpost_lΛ_mmtd(model.prior.Λ, Zandζnow[:,1], model.R)
 
                 model.state.lλ = rpost_lλ_mmtd(model.prior.λ, Zandζnow,
-                    model.λ_indx.lens, model.M)
+                    model.λ_indx.lens, model.R)
 
             end
 
             model.state.lQ0, model.state.lQ = rpost_lQ_mmtd(model.S, model.TT,
                 model.prior.Q0, model.prior.Q, Zandζnow,
-                model.λ_indx, model.R, model.M, model.K)
+                model.λ_indx, model.L, model.R, model.K)
 
             model.iter += 1
             if model.iter % report_freq == 0
@@ -734,19 +733,19 @@ Bayes factors for high order Markov chains
 
 ### Example
 ```julia
-R = 4
-M = 2
+L = 4
+R = 2
 K = 2
-λ_indx = build_λ_indx(R, M)
+λ_indx = build_λ_indx(L, R)
 TT = 200
 ## simulate a chain with order 2, lags 1 and 3 important
-S = sim_mmtd(TT, 100, R, M, K, λ_indx, # non-sparse transitions
+S = sim_mmtd(TT, 100, L, R, K, λ_indx, # non-sparse transitions
     [ 0.0, 1.0 ],
     [ [1.0, 0.0, 0.0, 0.0 ],
       [0.0, 1.0, 0.0, 0.0, 0.0, 0.0] ],
     [ reshape( [1.0, 0.0, 1.0, 0.0], K, K),
       reshape( [0.8, 0.2, 0.3, 0.7, 0.5, 0.5, 0.1, 0.9], K, K, K ) ] )[1]
-S = sim_mmtd(TT, 100, R, M, K, λ_indx, # sparse transitions
+S = sim_mmtd(TT, 100, L, R, K, λ_indx, # sparse transitions
     [ 0.0, 1.0 ],
     [ [1.0, 0.0, 0.0, 0.0 ],
       [0.0, 1.0, 0.0, 0.0, 0.0, 0.0] ],
@@ -755,25 +754,25 @@ S = sim_mmtd(TT, 100, R, M, K, λ_indx, # sparse transitions
 priQ_type = "Dir"
 priQ_type = "SBM"
 if priQ_type == "Dir"
-    prior_Q = symmetricDirPrior_mmtd(1.0, 1.0, 1.0, R, M, K, λ_indx)[3]
+    prior_Q = symmetricDirPrior_mmtd(1.0, 1.0, 1.0, L, R, K, λ_indx)[3]
 elseif priQ_type == "SBM"
 end
 
-bf = bfact_MC(S, R, M, K, prior_Q)
+bf = bfact_MC(S, L, R, K, prior_Q)
 ```
 """
-function bfact_MC(S::Vector{Int}, R::Int, M::Int, K::Int,
+function bfact_MC(S::Vector{Int}, L::Int, R::Int, K::Int,
     prior_Q0::Vector{Float64},
     prior_Q::Vector{<:Array{Float64}}, report="recipmax")
 
       TT = length(S)
-      n = TT - R
+      n = TT - L
 
-      λ_indx = build_λ_indx(R, M)
+      λ_indx = build_λ_indx(L, R)
       llik = zeros(Float64, λ_indx.nZζ+1)
 
       Zandζ_now = ZζtoZandζ( fill(0, n) , λ_indx)
-      N0_now, N_now = counttrans_mmtd(S, TT, Zandζ_now, λ_indx, R, M, K) # vector of arrays, indices in reverse time
+      N0_now, N_now = counttrans_mmtd(S, TT, Zandζ_now, λ_indx, L, R, K) # vector of arrays, indices in reverse time
       llik[1] = SparseProbVec.lmvbeta( prior_Q0 .+ N0_now ) - SparseProbVec.lmvbeta( prior_Q0 )
 
       for i in 1:λ_indx.nZζ
@@ -782,7 +781,7 @@ function bfact_MC(S::Vector{Int}, R::Int, M::Int, K::Int,
           Zandζ_now = ZζtoZandζ( fill(i, n) , λ_indx)
 
           ## calculate current log marginal likelihood
-          N0_now, N_now = counttrans_mmtd(S, TT, Zandζ_now, λ_indx, R, M, K) # vector of arrays, indices in reverse time
+          N0_now, N_now = counttrans_mmtd(S, TT, Zandζ_now, λ_indx, L, R, K) # vector of arrays, indices in reverse time
 
           α0_Q = deepcopy(prior_Q[Znow])
           α0_Qmat = reshape(α0_Q, K, K^Znow)
@@ -809,21 +808,21 @@ function bfact_MC(S::Vector{Int}, R::Int, M::Int, K::Int,
 
       (λ_indx, hcat(vcat([0 0], λ_indx.Zζindx), bfact, llik))
 end
-function bfact_MC(S::Vector{Int}, R::Int, M::Int, K::Int,
+function bfact_MC(S::Vector{Int}, L::Int, R::Int, K::Int,
     prior_Q0::Vector{Float64},
     prior_Q::Union{Vector{<:Array{SparseDirMix}}, Vector{<:Array{SBMprior}}},
     report="recipmax")
 
-      prior_Q_vec = [ reshape(prior_Q[m], (K^m)) for m in 1:M ]
+      prior_Q_vec = [ reshape(prior_Q[r], (K^r)) for r in 1:R ]
 
       TT = length(S)
-      n = TT - R
+      n = TT - L
 
-      λ_indx = build_λ_indx(R, M)
+      λ_indx = build_λ_indx(L, R)
       llik = zeros(Float64, λ_indx.nZζ+1)
 
       Zandζ_now = ZζtoZandζ( fill(0, n) , λ_indx)
-      N0_now, N_now = counttrans_mmtd(S, TT, Zandζ_now, λ_indx, R, M, K) # vector of arrays, indices in reverse time
+      N0_now, N_now = counttrans_mmtd(S, TT, Zandζ_now, λ_indx, L, R, K) # vector of arrays, indices in reverse time
       llik[1] = SparseProbVec.lmvbeta( prior_Q0 .+ N0_now ) - SparseProbVec.lmvbeta( prior_Q0 )
 
       for i in 1:λ_indx.nZζ
@@ -832,7 +831,7 @@ function bfact_MC(S::Vector{Int}, R::Int, M::Int, K::Int,
           Zandζ_now = ZζtoZandζ( fill(i, n) , λ_indx)
 
           ## calculate current log marginal likelihood
-          N0_now, N_now = counttrans_mmtd(S, TT, Zandζ_now, λ_indx, R, M, K) # vector of arrays, indices in reverse time
+          N0_now, N_now = counttrans_mmtd(S, TT, Zandζ_now, λ_indx, L, R, K) # vector of arrays, indices in reverse time
           N_now_mat = reshape(N_now[Znow], K, K^Znow)
 
           llikmarg = 0.0
@@ -881,9 +880,9 @@ function forecDist_MMTD(Slagrev::Vector{Int}, Λ::Vector{Float64},
   λ::Vector{Vector{Float64}}, Q0::Vector{Float64}, Q::Vector{<:Array{Float64}},
   λ_indx::λindxMMTD)
     K = length(Q0)
-    R = length(λ[1])
-    M = length(Λ) - 1
-    @assert length(Slagrev) == R
+    L = length(λ[1])
+    R = length(Λ) - 1
+    @assert length(Slagrev) == L
     w = zeros(Float64, K)
     for k in 1:K
         w[k] += Λ[1] * Q0[k]
@@ -904,15 +903,15 @@ Computes the (conditional on intial values) log-likelihood for a time series.
 
 ### Example
 ```julia
-    R = 3
-    M = 2
+    L = 3
+    R = 2
     K = 2
     lΛ = log.([0.0, 0.0, 1.0])
     lλ = [log.([0.0, 0.0, 1.0]), log.([0.0, 1.0, 0.0])]
     lQ0 = log.([0.2, 0.8])
     lQ = [ log.(reshape([0.7, 0.3, 0.25, 0.75], (2,2))),
           log.(reshape([0.1, 0.9, 0.4, 0.6, 0.5, 0.5, 0.2, 0.8], (2,2,2))) ]
-    λ_indx = build_λ_indx(R,M)
+    λ_indx = build_λ_indx(L,R)
     S = [1,1,2,1,1,2,2,1,2,2,1,2,1,2,1,1,1,1,2,1,2]
     llik_MMTD(S, lΛ, lλ, lQ0, lQ, λ_indx)
 ```
@@ -921,15 +920,15 @@ function llik_MMTD(S::Vector{Int}, lΛ::Vector{Float64}, lλ::Vector{Vector{Floa
     lQ0::Vector{Float64}, lQ::Vector{<:Array{Float64}}, λ_indx::λindxMMTD)
 
     TT = length(S)
-    R = length(lλ[1])
+    L = length(lλ[1])
 
-    n = TT - R
+    n = TT - L
 
     lpt = Matrix{Float64}(undef, n, λ_indx.nZζ+1)
 
     for i in 1:n
-        tt = i + R
-        Slagrev_now = S[range(tt-1, step=-1, length=R)]
+        tt = i + L
+        Slagrev_now = S[range(tt-1, step=-1, length=L)]
 
         lpt[i,1] = lΛ[1] + lQ0[S[tt]]
         for ℓ in 1:λ_indx.nZζ
@@ -968,58 +967,58 @@ function TankReduction(Λ::Vector{Float64}, λ::Vector{Vector{Float64}},
     # here each Q is organized with tos as rows and froms as columns
 
     K = length(Q0)
-    M = length(Λ) - 1
+    R = length(Λ) - 1
 
-    Q_mats = [ reshape(Q[m], K, K^m) for m in 1:M ]
+    Q_mats = [ reshape(Q[r], K, K^r) for r in 1:R ]
 
     Z0 = Λ[1] .* Q0
-    Z = [ [ Matrix{Float64}(undef, K, K^m) for j = 1:λ_indx.lens[m] ] for m = 1:M ]
-    a = [ [ Vector{Float64}(undef, K) for j = 1:λ_indx.lens[m] ] for m = 1:M ]
+    Z = [ [ Matrix{Float64}(undef, K, K^r) for j = 1:λ_indx.lens[r] ] for r = 1:R ]
+    a = [ [ Vector{Float64}(undef, K) for j = 1:λ_indx.lens[r] ] for r = 1:R ]
 
-    for m = 1:M
-        for j = 1:λ_indx.lens[m]
-            Z[m][j] = Q_mats[m] .* Λ[m+1] .* λ[m][j]
-            a[m][j] = [ minimum( Z[m][j][k,:] ) for k = 1:K ]
+    for r = 1:R
+        for j = 1:λ_indx.lens[r]
+            Z[r][j] = Q_mats[r] .* Λ[r+1] .* λ[r][j]
+            a[r][j] = [ minimum( Z[r][j][k,:] ) for k = 1:K ]
         end
     end
 
     global ZZ0 = deepcopy(Z0)
     global ZZ = deepcopy(Z)
 
-    for m = 1:M
-        for j = 1:λ_indx.lens[m]
-            global ZZ0 += a[m][j]
+    for r = 1:R
+        for j = 1:λ_indx.lens[r]
+            global ZZ0 += a[r][j]
             for k = 1:K
-                global ZZ[m][j][k,:] .-= a[m][j][k]
+                global ZZ[r][j][k,:] .-= a[r][j][k]
             end
         end
     end
 
     global λtilde = deepcopy(λ)
-    for m = 1:M
-        for j = 1:λ_indx.lens[m]
-            global λtilde[m][j] = sum(ZZ[m][j][:,1])
+    for r = 1:R
+        for j = 1:λ_indx.lens[r]
+            global λtilde[r][j] = sum(ZZ[r][j][:,1])
         end
     end
 
-    Λr = vcat( sum(ZZ0), [ sum(λtilde[m]) for m = 1:M ] )
+    Λr = vcat( sum(ZZ0), [ sum(λtilde[r]) for r = 1:R ] )
     global λr = deepcopy(λtilde)
-    for m = 1:M
-        if Λr[m+1] > 0.0
-            global λr[m] ./= Λr[m+1]
+    for r = 1:R
+        if Λr[r+1] > 0.0
+            global λr[r] ./= Λr[r+1]
         end
     end
     global Q0r = deepcopy(ZZ0)
-    global Qr = [ zeros(Float64, fill(K, m+1)...) for m in 1:M ]
+    global Qr = [ zeros(Float64, fill(K, r+1)...) for r in 1:R ]
 
     if Λr[1] > 0.0
         global Q0r ./= Λr[1]
     end
 
-    for m = 1:M
-        maxval, indx = findmax(λtilde[m])
-        if λr[m][indx] > 0.0
-            global Qr[m] = reshape(ZZ[m][indx], fill(K, m+1)...) ./ maxval
+    for r = 1:R
+        maxval, indx = findmax(λtilde[r])
+        if λr[r][indx] > 0.0
+            global Qr[r] = reshape(ZZ[r][indx], fill(K, r+1)...) ./ maxval
         end
     end
 
