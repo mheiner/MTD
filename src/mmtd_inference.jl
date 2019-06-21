@@ -648,7 +648,7 @@ thin=1, jmpstart_iter=25, report_freq=500, monitor::Vector{Symbol}=[:lΛ, :lλ, 
 """
 function mcmc!(model::ModMMTD, n_keep::Int; save::Bool=true,
     report_filename::String="out_progress.txt", thin::Int=1, jmpstart_iter::Int=25,
-    report_freq::Int=10000;
+    report_freq::Int=10000,
     monitor::Vector{Symbol}=[:lΛ, :lλ, :lQ0, :lQ])
 
     ## output files
