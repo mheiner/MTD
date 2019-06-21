@@ -120,7 +120,7 @@ function timemod!(n::Int64, model::Union{ModMTD, ModMTDg, ModMMTD}, niter::Int, 
     outfile = open(outfilename, "a+")
     write(outfile, "timing for $(niter) iterations each:\n")
     for i in 1:n
-        tinfo = @timed mcmc!(model, niter, false, outfilename)
+        tinfo = @timed mcmc!(model, niter, save=false, report_filename=outfilename)
         write(outfile, "trial $(i), elapsed: $(tinfo[2]) seconds, allocation: $(tinfo[3]/1.0e6) Megabytes\n")
     end
     close(outfile)
