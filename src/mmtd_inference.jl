@@ -646,14 +646,14 @@ end
 mcmc!(model, n_keep[, save=true, report_filename="out_progress.txt",
 thin=1, jmpstart_iter=25, report_freq=500, monitor::Vector{Symbol}=[:lΛ, :lλ, :lQ0, :lQ])
 """
-function mcmc!(model::ModMMTD, n_keep::Int, save::Bool=true,
+function mcmc!(model::ModMMTD, n_keep::Int; save::Bool=true,
     report_filename::String="out_progress.txt", thin::Int=1, jmpstart_iter::Int=25,
     report_freq::Int=10000;
     monitor::Vector{Symbol}=[:lΛ, :lλ, :lQ0, :lQ])
 
     ## output files
     report_file = open(report_filename, "a+")
-    write(report_file, "Commencing MCMC at $(Dates.now()) for $(n_keep * thin) iterations.\n")
+    write(report_file, "Commencing MCMC at $(Dates.now()) at iteration $(model.iter) for $(n_keep * thin) iterations.\n")
     close(report_file)
 
     if save
@@ -701,6 +701,10 @@ function mcmc!(model::ModMMTD, n_keep::Int, save::Bool=true,
             if model.iter % report_freq == 0
                 report_file = open(report_filename, "a+")
                 write(report_file, "Iter $(model.iter) at $(Dates.now())\n")
+                llik_now = llik_MMTD(model.S, model.state.lΛ, model.state.lλ,
+                    model.state.lQ0, model.state.lQ, model.λ_indx)
+                write(report_file, "Log-likelihood $(llik_now)\n")
+                write(report_file, "Current order weights: $( round.(exp.(model.state.lΛ), digits=3) )\n\n")
                 close(report_file)
             end
         end
