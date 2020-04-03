@@ -50,8 +50,9 @@ Returns a tensor with estimated transition probabilities for `L`th order transit
 ### Example
 ```julia
   S = [1,2,1,1,1,2,4,1,3,1,1,3,1,2,1,1,2]
-  count_trans_L(S, 4, 2)
+  N = count_trans_L(S, 4, 2)
   transTens_MLE(S, 4, 2)
+  transTens_MLD(N)
 ```
 """
 function transTens_MLE(S::Vector{Int}, K::Int, L::Int)
