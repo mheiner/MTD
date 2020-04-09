@@ -749,7 +749,7 @@ function mcmc!(model::ModMMTD, n_keep::Int; save::Bool=true,
 
           if model.iter % report_freq != 0
               model.state.lQ0, model.state.lQ = rpost_lQ_mmtd(model.S, model.TT,
-              model.prior.Q0, model.prior.Q, Zandζnow,
+              model.prior.Q0, model.prior.Q, ZζtoZandζ(model.state.Zζ, model.λ_indx),
               model.λ_indx, model.L, model.R, model.K)
           end
 
