@@ -10,8 +10,8 @@ mutable struct ParamsMMTD
   lΛ::Vector{Float64}
   lλ::Vector{Vector{Float64}}
   Zζ::Vector{Int} # will be length TT - L, mapped through ZζtoZandζ(), values start at 0 (intercept)
-  lQ0::Vector{Float64}
-  lQ::Vector{<:Array{Float64}} # organized so first index is now and lag 1 is the next index
+  lQ0::Union{Vector{Float64}, Nothing}
+  lQ::Union{Vector{<:Array{Float64}}, Nothing} # organized so first index is now and lag 1 is the next index
 
   ParamsMMTD(lΛ, lλ, Zζ, lQ0, lQ) = new(deepcopy(lΛ), deepcopy(lλ), deepcopy(Zζ),
     deepcopy(lQ0), deepcopy(lQ))
@@ -394,11 +394,12 @@ function rpost_Zζ_marg(S::Vector{Int}, Zζ_old::Vector{Int}, λ_indx::λindxMMT
   for i in 1:(TT-L)  # i indexes Zζ, tt indexes S
     tt = i + L
     Slagrev_now = S[range(tt-1, step=-1, length=L)]
+    Zζ_now = deepcopy(Zζ_out[i])
 
-    if Zζ_out[i] == 0
+    if Zζ_now == 0
         Zold, ζold = 0, 0
     else
-        Zold, ζold = deepcopy(λ_indx.Zζindx[Zζ_out[i],1]), deepcopy(λ_indx.Zζindx[Zζ_out[i],2])
+        Zold, ζold = deepcopy(λ_indx.Zζindx[Zζ_now,1]), deepcopy(λ_indx.Zζindx[Zζ_now,2])
     end
 
     eSt = [ 1.0 * (kk==S[tt]) for kk in 1:K ]
@@ -436,7 +437,22 @@ function rpost_Zζ_marg(S::Vector{Int}, Zζ_old::Vector{Int}, λ_indx::λindxMMT
     end
 
     w = exp.( lw .- maximum(lw) )
-    newindx = StatsBase.sample(Weights( w )) - 1
+
+    # newindx = StatsBase.sample(Weights( w )) - 1
+
+    ## Metropolized
+    w_cand = deepcopy(w)
+    w_cand[Zζ_now+1] = 0.0
+
+    Zζ_cand = sample(StatsBase.Weights(w_cand)) - 1
+    lar = logsumexp( lw[1:end .!= (Zζ_now+1)] ) - logsumexp( lw[1:end .!= (Zζ_cand+1)] )
+
+    if log(rand()) < lar
+        newindx = deepcopy(Zζ_cand) # already 0-based
+      else
+        newindx = deepcopy(Zζ_now) # already 0-based
+    end
+
     Zζ_out[i] = deepcopy(newindx)
 
     ## update running quantities
@@ -483,11 +499,12 @@ function rpost_Zζ_marg(S::Vector{Int}, Zζ_old::Vector{Int},
   for i in 1:(TT-L)  # i indexes ζ, tt indexes S
       tt = i + L
       Slagrev_now = S[range(tt-1, step=-1, length=L)]
+      Zζ_now = deepcopy(Zζ_out[i])
 
-      if Zζ_out[i] == 0
+      if Zζ_now == 0
           Zold, ζold = 0, 0
       else
-          Zold, ζold = deepcopy(λ_indx.Zζindx[Zζ_out[i],1]), deepcopy(λ_indx.Zζindx[Zζ_out[i],2])
+          Zold, ζold = deepcopy(λ_indx.Zζindx[Zζ_now,1]), deepcopy(λ_indx.Zζindx[Zζ_now,2])
       end
 
       eSt = [ 1*(kk==S[tt]) for kk in 1:K ]
@@ -530,7 +547,22 @@ function rpost_Zζ_marg(S::Vector{Int}, Zζ_old::Vector{Int},
       end
 
       w = exp.( lw .- maximum(lw) )
-      newindx = StatsBase.sample(Weights( w )) - 1
+
+      # newindx = StatsBase.sample(Weights( w )) - 1
+
+      ## Metropolized
+      w_cand = deepcopy(w)
+      w_cand[Zζ_now+1] = 0.0
+
+      Zζ_cand = sample(StatsBase.Weights(w_cand)) - 1
+      lar = logsumexp( lw[1:end .!= (Zζ_now+1)] ) - logsumexp( lw[1:end .!= (Zζ_cand+1)] )
+
+      if log(rand()) < lar
+          newindx = deepcopy(Zζ_cand) # already 0-based
+        else
+          newindx = deepcopy(Zζ_now) # already 0-based
+      end
+
       Zζ_out[i] = deepcopy(newindx)
 
       ## update running quantities
@@ -693,14 +725,18 @@ function mcmc!(model::ModMMTD, n_keep::Int; save::Bool=true,
 
             end
 
-            model.state.lQ0, model.state.lQ = rpost_lQ_mmtd(model.S, model.TT,
-                model.prior.Q0, model.prior.Q, Zandζnow,
-                model.λ_indx, model.L, model.R, model.K)
+            model.state.lQ0 = nothing # don't update Q unless we need it
+            model.state.lQ = nothing
 
             model.iter += 1
             if model.iter % report_freq == 0
                 report_file = open(report_filename, "a+")
                 write(report_file, "Iter $(model.iter) at $(Dates.now())\n")
+
+                model.state.lQ0, model.state.lQ = rpost_lQ_mmtd(model.S, model.TT,
+                    model.prior.Q0, model.prior.Q, Zandζnow,
+                    model.λ_indx, model.L, model.R, model.K) # for likelihood calculation
+
                 llik_now = llik_MMTD(model.S, model.state.lΛ, model.state.lλ,
                     model.state.lQ0, model.state.lQ, model.λ_indx)
                 write(report_file, "Log-likelihood $(llik_now)\n")
@@ -710,10 +746,18 @@ function mcmc!(model::ModMMTD, n_keep::Int; save::Bool=true,
         end
 
         if save
-            for field in monitor
-                sims[i][field] = deepcopy(getfield(model.state, field))
-            end
-            sims[i][:llik] = llik_MMTD(model.S, model.state.lΛ, model.state.lλ,
+
+          if model.iter % report_freq != 0
+              model.state.lQ0, model.state.lQ = rpost_lQ_mmtd(model.S, model.TT,
+              model.prior.Q0, model.prior.Q, Zandζnow,
+              model.λ_indx, model.L, model.R, model.K)
+          end
+
+          for field in monitor
+              sims[i][field] = deepcopy(getfield(model.state, field))
+          end
+
+          sims[i][:llik] = llik_MMTD(model.S, model.state.lΛ, model.state.lλ,
                 model.state.lQ0, model.state.lQ, model.λ_indx)
         end
 
