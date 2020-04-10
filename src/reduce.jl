@@ -126,6 +126,19 @@ function reduce_gen(A::Array{T}, sub_order::Int, leftoversum_tol=1.0e-16) where 
 end
 
 
+"""
+    reduce_transTens(Omeg, [totalweight_toler=0.001, maxiter=100, leftoversum_tol=1.0e-9])
+
+Returns an MMTDg decomposition from provided transition probability tensor Omega. The algorithm continues until either 1.0 - totalweight_toler has been assigned, or maxiter is reached.
+At each step of decomposition, all distributions remaining must sum to within leftoversum_tol of one another.
+
+### Example
+```julia
+Omeg = reshape([0.7, 0.3, 0.7, 0.3, 0.4, 0.6, 0.4, 0.6], (2,2,2)) # only lag 2 matters
+r = reduce_transTens(TransTens(Omeg), leftoversum_tol=1.0e-6)
+print(r)
+```
+"""
 function reduce_transTens(Omeg::Union{TransTens, Array{T}}; totalweight_toler=0.001, maxiter=100, leftoversum_tol=1.0e-9) where T <: Real
     if typeof(Omeg) == TransTens
         ord = Omeg.order
