@@ -14,5 +14,6 @@ include("mtdg_inference.jl")
 include("mmtd_inference.jl")
 include("gof.jl")
 include("general.jl")
+include("reduce.jl")
 
 end # module
