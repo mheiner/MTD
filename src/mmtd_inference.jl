@@ -4,14 +4,17 @@ export ParamsMMTD, PriorMMTD, ModMMTD, λindxMMTD,
   build_λ_indx, ZζtoZandζ, sim_mmtd, symmetricDirPrior_mmtd, transTensor_mmtd,
   counttrans_mmtd,
   mcmc!, timemod!,
-  bfact_MC, forecDist_MMTD, llik_MMTD;
+  bfact_MC, forecDist_MMTD, llik_MMTD,
+  addDecomp_postsims!;
 
 mutable struct ParamsMMTD
   lΛ::Vector{Float64}
   lλ::Vector{Vector{Float64}}
   Zζ::Vector{Int} # will be length TT - L, mapped through ZζtoZandζ(), values start at 0 (intercept)
   lQ0::Union{Vector{Float64}, Nothing}
-  lQ::Union{Vector{<:Array{Float64}}, Nothing} # organized so first index is now and lag 1 is the next index
+  lQ::Union{Vector{<:Array{Float64}}, Nothing, Any} # organized so first index is now and lag 1 is the next index; the Any is for compatibility with BSON
+  # lQ::Union{Vector{Array{Float64}}, Nothing}
+  # lQ::Any # for compatibility with BSON
 
   ParamsMMTD(lΛ, lλ, Zζ, lQ0, lQ) = new(deepcopy(lΛ), deepcopy(lλ), deepcopy(Zζ),
     deepcopy(lQ0), deepcopy(lQ))
@@ -21,7 +24,9 @@ mutable struct PriorMMTD
   Λ::Union{Vector{Float64}, SparseDirMix, SBMprior}
   λ::Vector{Union{Vector{Float64}, SparseDirMix, SBMprior}} # may be of mixed type
   Q0::Vector{Float64}
-  Q::Union{Vector{<:Array{Float64}}, Vector{<:Array{SparseDirMix}}, Vector{<:Array{SBMprior}}}
+  Q::Union{Vector{<:Array{Float64}}, Vector{<:Array{SparseDirMix}}, Vector{<:Array{SBMprior}}, Any} # MCMC functions depend on this type; the Any is for compatibility with BSON
+  # Q::Vector{ Union{ Array{Float64}, Array{SparseDirMix}, Array{SBMprior} } }
+  # Q::Any  # for compatibility with BSON
 
   PriorMMTD(Λ, λ, Q0, Q) = new(deepcopy(Λ), deepcopy(λ), deepcopy(Q0), deepcopy(Q))
 end
@@ -148,26 +153,80 @@ end
 """
     transTensor_mmtd(L, R, K, λ_indx, Λ, λ, Q0, Q)
 
-Calculate full transition tensor from Λ, λ, and Q.
+Calculate full transition tensor from Λ, λ, Q0 and Q.
 """
+# function transTensor_mmtd(L::Int, R::Int, K::Int, λ_indx::λindxMMTD,
+#   Λ::Vector{Float64}, λ::Vector{Vector{Float64}},
+#   Q0::Vector{Float64}, Q::Vector{<:Array{Float64}}; login::Bool=false)
+#
+#   froms, nfroms = create_froms(K, L) # in this case, ordered by now, lag1, lag2, etc.
+#   Ωmat = zeros(Float64, (K, nfroms))
+#
+#   if login # all contributing quantities are on log scale
+#     for i in 1:nfroms
+#       for k in 1:K
+#         Ωmat[k,i] += exp(Λ[1] + Q0[k])
+#         for r in 1:R
+#           for ℓ in 1:λ_indx.lens[r]
+#             Ωmat[k,i] += exp( Λ[r+1] + λ[r][ℓ] + Q[r][k,froms[i][[λ_indx.indxs[r][ℓ]]...]...] )
+#           end
+#         end
+#       end
+#     end
+#   else
+#     for i in 1:nfroms
+#       for k in 1:K
+#         Ωmat[k,i] += Λ[1] * Q0[k]
+#         for r in 1:R
+#           for ℓ in 1:λ_indx.lens[r]
+#             Ωmat[k,i] += Λ[r+1] .* λ[r][ℓ] .* Q[r][k,froms[i][[λ_indx.indxs[r][ℓ]]...]...]
+#           end
+#         end
+#       end
+#     end
+#   end
+#
+#   reshape(Ωmat, fill(K,L+1)...)
+# end
+# below is 5 times faster
 function transTensor_mmtd(L::Int, R::Int, K::Int, λ_indx::λindxMMTD,
   Λ::Vector{Float64}, λ::Vector{Vector{Float64}},
-  Q0::Vector{Float64}, Q::Vector{<:Array{Float64}})
+  Q0::Vector{Float64}, Q::Vector{<:Array{Float64}}; login::Bool=false)
 
-  froms, nfroms = create_froms(K, L) # in this case, ordered by now, lag1, lag2, etc.
-  Ωmat = zeros(Float64, (K, nfroms))
-  for i in 1:nfroms
-    for k in 1:K
-        Ωmat[k,i] += Λ[1] * Q0[k]
-      for r in 1:R
-        for ℓ in 1:λ_indx.lens[r]
-            Ωmat[k,i] += Λ[r+1] .* λ[r][ℓ] .* Q[r][k,froms[i][[λ_indx.indxs[r][ℓ]]...]...]
-        end
-      end
-    end
+  out = zeros(fill(K, L+1)...)
+
+  if login
+      A0 = exp.(Λ[1] .+ Q0)
+  else
+      A0 = Λ[1] .* Q0
   end
-  reshape(Ωmat, fill(K,L+1)...)
+
+  out .+= reshape( vec(A0), [K, fill(1, L)...]... )
+
+  for r in 1:R
+      for ℓ in 1:λ_indx.lens[r]
+
+          if login
+              A = exp.(Λ[r+1] .+ λ[r][ℓ] .+ Q[r])
+          else
+              A = Λ[r+1] .* λ[r][ℓ] .* Q[r]
+          end
+
+          dims = [K, fill(1, L)...]
+          for c in λ_indx.indxs[r][ℓ]
+              dims[c+1] = K
+          end
+
+          Abdcst = reshape(vec(A), dims...)
+
+          out .+= Abdcst
+
+      end
+  end
+
+  return out
 end
+
 
 
 """
@@ -1072,4 +1131,33 @@ function TankReduction(Λ::Vector{Float64}, λ::Vector{Vector{Float64}},
     end
 
     Λr, λr, Q0r, Qr
+end
+
+
+"""
+    addDecomp_postsims!(sims::Vector{Any}, model::ModMMTD; totalweight_thresh=0.001, maxiter=100, leftoversum_tol=1.0e-9)
+
+Reconstruct and decompose transition probability tensor from MMTD posterior simulations. Adds aggregated level weights and
+lag involvment to each sample.
+
+"""
+function addDecomp_postsims!(sims, model::ModMMTD; totalweight_thresh=0.001, maxiter=100, leftoversum_tol=1.0e-9)
+
+  for ii in 1:length(sims)
+
+    if typeof(sims[ii][:lλ]) <: Array{Any}
+      sims[ii][:lλ] = [ deepcopy(sims[ii][:lλ][j]) for j = 1:length(sims[ii][:lλ]) ] # correctly convert from BSON
+    end
+    if typeof(sims[ii][:lQ]) <: Array{Any}
+      sims[ii][:lQ] = [ deepcopy(sims[ii][:lQ][j]) for j = 1:length(sims[ii][:lQ]) ] # correctly convert from BSON
+    end
+
+    Omeg = transTensor_mmtd(model.L, model.R, model.K, model.λ_indx,
+      sims[ii][:lΛ], sims[ii][:lλ], sims[ii][:lQ0], sims[ii][:lQ], login=true)
+    dcp = reduce_transTens(TransTens(Omeg), totalweight_thresh=totalweight_thresh, maxiter=maxiter, leftoversum_tol=leftoversum_tol)
+    sims[ii][:Dlaginvolv] = deepcopy(dcp.involv)
+    sims[ii][:Dlevelweight] = deepcopy(dcp.level_lam_total)
+  end
+
+  return nothing
 end

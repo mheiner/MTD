@@ -119,8 +119,7 @@ Q = [ reshape( hcat([ rDirichlet(ones(K)) for k in 1:(K)^m ]...), fill(K, m+1)..
 Omeg = TransTens(transTensor_mmtd(L, M, K, λ_indx, Λ, λ, Q0, Q))
 
 out = reduce_transTens(Omeg)
-sum(out[1][:,2])
-
+print(out)
 
 ## simulation 2 scenario (not the same as used in simulations)
 Random.seed!(12)
@@ -151,3 +150,24 @@ levels
 configs
 involv
 Q[4]
+
+
+
+L = 3
+R = 2
+K = 2
+lam_indx = build_λ_indx(L, R)
+Lam = [0.3, 0.5, 0.2]
+lLam = log.(Lam)
+lam = [ [0.6, 0.3, 0.1], [0.0, 0.2, 0.8]]
+llam = [log.(lam[i]) for i = 1:length(lam)]
+Q0 = [0.6, 0.4]
+lQ0 = log.(Q0)
+Q = [ [0.5 0.2; 0.5 0.8], reshape([0.8, 0.2, 0.2, 0.8, 0.3, 0.7, 0.1, 0.9], 2,2,2) ]
+lQ = [log.(Q[i]) for i = 1:length(Q)]
+
+Omeg = transTensor_mmtd(L, R, K, lam_indx, Lam, lam, Q0, Q, login=false)
+Omeg = transTensor_mmtd(L, R, K, lam_indx, lLam, llam, lQ0, lQ, login=true)
+
+dcp = reduce_transTens(TransTens(Omeg))
+print(dcp)
