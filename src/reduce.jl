@@ -83,7 +83,7 @@ function reduce_intercept(Omeg::TransTens, leftoversum_tol=1.0e-16)
 end
 
 
-function reduce_gen(A::Array{T}, sub_order::Int, leftoversum_tol=1.0e-16) where T <: Real
+function reduce_gen(A::Array{T}, sub_order::Int, leftoversum_tol=1.0e-16, random=false) where T <: Real
 
     order = ndims(A) - 1
     d = size(A)
@@ -110,7 +110,12 @@ function reduce_gen(A::Array{T}, sub_order::Int, leftoversum_tol=1.0e-16) where 
         take_cand[ℓ] =  Mins ./ sums_Mins
     end
 
-    lam_sel, lag_sel_indx = findmax(lam_cand) # Currently follows the lam_indx ordering
+    if random
+        lag_sel_indx = sample(StatsBase.Weights(lam_cand))
+        lam_sel = deepcopy(lam_cand[lag_sel_indx])
+    else
+        lam_sel, lag_sel_indx = findmax(lam_cand) # Currently follows the lam_indx ordering
+    end
 
     if abs(lam_sel) < 1.0e-6
         lam_sel = 0.0
@@ -134,10 +139,12 @@ end
 
 
 """
-    reduce_transTens(Omeg, [totalweight_thresh=0.001, maxiter=100, leftoversum_tol=1.0e-9])
+    reduce_transTens(Omeg, [totalweight_thresh=0.001, maxiter=100, leftoversum_tol=1.0e-9, random=false])
 
 Returns an MMTDg decomposition from provided transition probability tensor Omega. The algorithm continues until either 1.0 - totalweight_thresh has been assigned, or maxiter is reached.
 At each step of decomposition, all distributions remaining must sum to within leftoversum_tol of one another.
+
+If random=true, lag configurations will be selected for extraction according to a discrete distribution with probabilities proportional to the potential weights.
 
 ### Example
 ```julia
@@ -146,7 +153,7 @@ r = reduce_transTens(TransTens(Omeg), leftoversum_tol=1.0e-6)
 print(r)
 ```
 """
-function reduce_transTens(Omeg::Union{TransTens, Array{T}}; totalweight_thresh=0.001, maxiter=100, leftoversum_tol=1.0e-9) where T <: Real
+function reduce_transTens(Omeg::Union{TransTens, Array{T}}; totalweight_thresh=0.001, maxiter=100, leftoversum_tol=1.0e-9, random=false) where T <: Real
     if typeof(Omeg) == TransTens
         ord = Omeg.order
     else
@@ -176,7 +183,7 @@ function reduce_transTens(Omeg::Union{TransTens, Array{T}}; totalweight_thresh=0
 
     while sub_ord_now < ord && whatsleft >= totalweight_thresh && iter < maxiter
 
-        lam_now, lagsel_now, Q_now, A, whatsleft = reduce_gen(A, sub_ord_now, leftoversum_tol)
+        lam_now, lagsel_now, Q_now, A, whatsleft = reduce_gen(A, sub_ord_now, leftoversum_tol, random)
 
         if lam_now > 0.0
             push!(lam, lam_now)

@@ -105,9 +105,14 @@ function deepcopyFields(state::T, fields::Vector{Symbol}) where T
 end
 
 
-function postSimsInit(monitor::Vector{Symbol}, n_keep::Int, init_state::Union{ParamsMTD, ParamsMTDg, ParamsMMTD})
+function postSimsInit(monitor::Union{Vector{Symbol}, Nothing}, n_keep::Int, init_state::Union{ParamsMTD, ParamsMTDg, ParamsMMTD})
 
-    state = deepcopyFields(init_state, monitor)
+    if typeof(monitor) == Vector{Symbol}
+        state = deepcopyFields(init_state, monitor)
+    else
+        state = Dict{Symbol, Any}()
+    end
+
     state[:llik] = 0.0
 
     sims = [ deepcopy(state) for i = 1:n_keep ]

@@ -691,6 +691,7 @@ function MetropIndep_ΛλZζ(S::Vector{Int}, lΛ_old::Vector{Float64},
   llikmarg_old = SparseProbVec.lmvbeta(prior_Q0 .+ N0_old)
 
   if typeof(prior_Q) <: Vector{<:Array{Float64}}
+  # if all([ typeof(prior_Q[r]) <: Array{Float64} for r in 1:R ])
 
       prior_Q_mats = [ reshape(prior_Q[r], K, K^r) for r in 1:R ]
 
@@ -703,6 +704,7 @@ function MetropIndep_ΛλZζ(S::Vector{Int}, lΛ_old::Vector{Float64},
       end
 
   elseif typeof(prior_Q) <: Union{Vector{<:Array{SparseDirMix}}, Vector{<:Array{SBMprior}}}
+  # elseif all([ typeof(prior_Q[r]) <: Union{ <:Array{SparseDirMix}, <:Array{SBMprior} } ])
 
       prior_Q_vec = [ reshape(prior_Q[r], (K^r)) for r in 1:R ]
 
@@ -737,10 +739,17 @@ end
 mcmc!(model, n_keep[, save=true, report_filename="out_progress.txt",
 thin=1, jmpstart_iter=25, report_freq=500, monitor::Vector{Symbol}=[:lΛ, :lλ, :lQ0, :lQ])
 """
-function mcmc!(model::ModMMTD, n_keep::Int; save::Bool=true,
-    report_filename::String="out_progress.txt", thin::Int=1, jmpstart_iter::Int=25,
+function mcmc!(model::ModMMTD, n_keep::Int;
+    save::Bool=true,
+    report_filename::String="out_progress.txt",
+    thin::Int=1, jmpstart_iter::Int=25,
     report_freq::Int=10000,
-    monitor::Vector{Symbol}=[:lΛ, :lλ, :lQ0, :lQ])
+    monitor::Union{Vector{Symbol}, Nothing}=[:lΛ, :lλ, :lQ0, :lQ])
+
+    ## fix bson issue of recreating model prior structure
+    if typeof(model.prior.Q) <: Array{Any}
+      model.prior.Q = [ deepcopy(model.prior.Q[r]) for r in 1:model.R ]
+    end
 
     ## output files
     report_file = open(report_filename, "a+")
@@ -812,10 +821,12 @@ function mcmc!(model::ModMMTD, n_keep::Int; save::Bool=true,
               model.λ_indx, model.L, model.R, model.K)
           end
 
-          for field in monitor
-              sims[i][field] = deepcopy(getfield(model.state, field))
+          if typeof(monitor) == Vector{Symbol}
+            for field in monitor
+                sims[i][field] = deepcopy(getfield(model.state, field))
+            end
           end
-
+          
           sims[i][:llik] = llik_MMTD(model.S, model.state.lΛ, model.state.lλ,
                 model.state.lQ0, model.state.lQ, model.λ_indx)
         end
