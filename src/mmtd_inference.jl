@@ -417,6 +417,56 @@ function rpost_lQ_mmtd(S::Vector{Int}, TT::Int,
 end
 
 
+
+"""
+    rpost_Zζ_fc(S, Zζ_old, λ_indx, lΛ, lλ, lQ0, lQ, TT, L, K)
+
+    Full conditinal updates for Zζ
+"""
+function rpost_Zζ_fc(S::Vector{Int}, Zζ_old::Vector{Int}, λ_indx::λindxMMTD,
+    lΛ::Vector{Float64},
+    lλ::Vector{Vector{Float64}},
+    lQ0::Vector{Float64},
+    lQ::Vector{<:Array{Float64}},
+    TT::Int, L::Int, R::Int, K::Int)
+
+  Zζ_out = deepcopy(Zζ_old)
+  Zj, ζj = deepcopy(λ_indx.Zζindx[:,1]), deepcopy(λ_indx.Zζindx[:,2])
+
+  for i in 1:(TT-L)  # i indexes Zζ, tt indexes S
+    tt = i + L
+    Slagrev_now = S[range(tt-1, step=-1, length=L)]
+
+    lw = zeros(Float64, λ_indx.nZζ+1)
+
+    lw[1] += lΛ[1] + lQ0[S[tt]]
+
+    for j in 1:λ_indx.nZζ
+
+      lw[j+1] += lΛ[ Zj[j] ] + lλ[ Zj[j] ][ ζj[j] ]
+      lw[j+1] += lQ[ Zj[j] ][ vcat(S[tt], Slagrev_now[ λ_indx.indxs[ Zj[j] ][ ζj[j] ] ]  )... ]
+
+    end
+
+    w = exp.( lw .- maximum(lw) )
+
+    ## Metropolized
+    w_cand = deepcopy(w)
+    w_cand[Zζ_old[i]+1] = 0.0
+
+    Zζ_cand = sample(StatsBase.Weights(w_cand)) - 1
+    lar = logsumexp( lw[1:end .!= (Zζ_old[i]+1)] ) - logsumexp( lw[1:end .!= (Zζ_cand+1)] )
+
+    if log(rand()) < lar
+        Zζ_out[i] = deepcopy(Zζ_cand) # already 0-based
+    end # otherwise it stays the same
+
+  end
+
+  Zζ_out
+end
+
+
 """
     rpost_Zζ_marg(S, Zζ_old, λ_indx, prior_Q, lΛ, lλ, TT, L, K)
 
@@ -744,7 +794,8 @@ function mcmc!(model::ModMMTD, n_keep::Int;
     report_filename::String="out_progress.txt",
     thin::Int=1, jmpstart_iter::Int=25,
     report_freq::Int=10000,
-    monitor::Union{Vector{Symbol}, Nothing}=[:lΛ, :lλ, :lQ0, :lQ])
+    monitor::Union{Vector{Symbol}, Nothing}=[:lΛ, :lλ, :lQ0, :lQ],
+    margQ::Bool=true)
 
     ## fix bson issue of recreating model prior structure
     if typeof(model.prior.Q) <: Array{Any}
@@ -776,7 +827,18 @@ function mcmc!(model::ModMMTD, n_keep::Int;
 
                 Zandζnow = ZζtoZandζ(model.state.Zζ, model.λ_indx)
 
+                if margQ
+                  model.state.lQ0 = nothing # don't update Q unless we need it
+                  model.state.lQ = nothing
+                else
+                  model.state.lQ0, model.state.lQ = rpost_lQ_mmtd(model.S, model.TT,
+                      model.prior.Q0, model.prior.Q, Zandζnow,
+                      model.λ_indx, model.L, model.R, model.K)
+                end
+
             else
+
+              if margQ
 
                 model.state.Zζ = rpost_Zζ_marg(model.S, model.state.Zζ,
                     model.λ_indx,
@@ -784,26 +846,44 @@ function mcmc!(model::ModMMTD, n_keep::Int;
                     model.state.lΛ, model.state.lλ,
                     model.TT, model.L, model.R, model.K)
 
+                model.state.lQ0 = nothing # don't update Q unless we need it
+                model.state.lQ = nothing
+
+              else
+
                 Zandζnow = ZζtoZandζ(model.state.Zζ, model.λ_indx)
 
-                model.state.lΛ = rpost_lΛ_mmtd(model.prior.Λ, Zandζnow[:,1], model.R)
+                model.state.lQ0, model.state.lQ = rpost_lQ_mmtd(model.S, model.TT,
+                    model.prior.Q0, model.prior.Q, Zandζnow,
+                    model.λ_indx, model.L, model.R, model.K)
 
-                model.state.lλ = rpost_lλ_mmtd(model.prior.λ, Zandζnow,
+                model.state.Zζ = rpost_Zζ_fc(model.S, model.state.Zζ,
+                    model.λ_indx,
+                    model.state.lΛ, model.state.lλ,
+                    model.state.lQ0, model.state.lQ,
+                    model.TT, model.L, model.R, model.K)
+
+              end
+
+              Zandζnow = ZζtoZandζ(model.state.Zζ, model.λ_indx)
+
+              model.state.lΛ = rpost_lΛ_mmtd(model.prior.Λ, Zandζnow[:,1], model.R)
+
+              model.state.lλ = rpost_lλ_mmtd(model.prior.λ, Zandζnow,
                     model.λ_indx.lens, model.R)
 
             end
-
-            model.state.lQ0 = nothing # don't update Q unless we need it
-            model.state.lQ = nothing
 
             model.iter += 1
             if model.iter % report_freq == 0
                 report_file = open(report_filename, "a+")
                 write(report_file, "Iter $(model.iter) at $(Dates.now())\n")
 
-                model.state.lQ0, model.state.lQ = rpost_lQ_mmtd(model.S, model.TT,
-                    model.prior.Q0, model.prior.Q, Zandζnow,
-                    model.λ_indx, model.L, model.R, model.K) # for likelihood calculation
+                if margQ
+                  model.state.lQ0, model.state.lQ = rpost_lQ_mmtd(model.S, model.TT,
+                      model.prior.Q0, model.prior.Q, Zandζnow,
+                      model.λ_indx, model.L, model.R, model.K) # for likelihood calculation
+                end
 
                 llik_now = llik_MMTD(model.S, model.state.lΛ, model.state.lλ,
                     model.state.lQ0, model.state.lQ, model.λ_indx)
@@ -815,7 +895,7 @@ function mcmc!(model::ModMMTD, n_keep::Int;
 
         if save
 
-          if model.iter % report_freq != 0
+          if margQ && model.iter % report_freq != 0
               model.state.lQ0, model.state.lQ = rpost_lQ_mmtd(model.S, model.TT,
               model.prior.Q0, model.prior.Q, ZζtoZandζ(model.state.Zζ, model.λ_indx),
               model.λ_indx, model.L, model.R, model.K)
@@ -826,7 +906,7 @@ function mcmc!(model::ModMMTD, n_keep::Int;
                 sims[i][field] = deepcopy(getfield(model.state, field))
             end
           end
-          
+
           sims[i][:llik] = llik_MMTD(model.S, model.state.lΛ, model.state.lλ,
                 model.state.lQ0, model.state.lQ, model.λ_indx)
         end
@@ -1060,88 +1140,6 @@ function llik_MMTD(S::Vector{Int}, lΛ::Vector{Float64}, lλ::Vector{Vector{Floa
     llik = sum(lptvec)
 
     return llik
-end
-
-
-"""
-    TankReduction(Λ::Vector{Float64}, λ::Vector{Vector{Float64}},
-        Q0::Vector{Float64}, Q::Vector{<:Array{Float64}}, λ_indx::λindxMMTD) (intercept only)
-
-    Computes Tank Reduction of the MMTD (intercept only).
-
-    ### Example
-    ```julia
-    Λ = [0.1, 0.5, 0.4]
-    λ = [[0.4, 0.3, 0.3], [0.2, 0.5, 0.3]]
-    Q0 = [0.5, 0.5]
-    Q = [ reshape([0.8, 0.2, 0.3, 0.7],2,2), reshape([0.4, 0.6, 0.7, 0.3, 0.9, 0.1, 0.2, 0.8], 2,2,2) ]
-    λ_indx = build_λ_indx(3, 2)
-
-    tr = TankReduction(Λ, λ, Q0, Q, λ_indx)
-    ```
-"""
-function TankReduction(Λ::Vector{Float64}, λ::Vector{Vector{Float64}},
-    Q0::Vector{Float64}, Q::Vector{<:Array{Float64}}, λ_indx::λindxMMTD) # currently intercept only
-
-    # here each Q is organized with tos as rows and froms as columns
-
-    K = length(Q0)
-    R = length(Λ) - 1
-
-    Q_mats = [ reshape(Q[r], K, K^r) for r in 1:R ]
-
-    Z0 = Λ[1] .* Q0
-    Z = [ [ Matrix{Float64}(undef, K, K^r) for j = 1:λ_indx.lens[r] ] for r = 1:R ]
-    a = [ [ Vector{Float64}(undef, K) for j = 1:λ_indx.lens[r] ] for r = 1:R ]
-
-    for r = 1:R
-        for j = 1:λ_indx.lens[r]
-            Z[r][j] = Q_mats[r] .* Λ[r+1] .* λ[r][j]
-            a[r][j] = [ minimum( Z[r][j][k,:] ) for k = 1:K ]
-        end
-    end
-
-    global ZZ0 = deepcopy(Z0)
-    global ZZ = deepcopy(Z)
-
-    for r = 1:R
-        for j = 1:λ_indx.lens[r]
-            global ZZ0 += a[r][j]
-            for k = 1:K
-                global ZZ[r][j][k,:] .-= a[r][j][k]
-            end
-        end
-    end
-
-    global λtilde = deepcopy(λ)
-    for r = 1:R
-        for j = 1:λ_indx.lens[r]
-            global λtilde[r][j] = sum(ZZ[r][j][:,1])
-        end
-    end
-
-    Λr = vcat( sum(ZZ0), [ sum(λtilde[r]) for r = 1:R ] )
-    global λr = deepcopy(λtilde)
-    for r = 1:R
-        if Λr[r+1] > 0.0
-            global λr[r] ./= Λr[r+1]
-        end
-    end
-    global Q0r = deepcopy(ZZ0)
-    global Qr = [ zeros(Float64, fill(K, r+1)...) for r in 1:R ]
-
-    if Λr[1] > 0.0
-        global Q0r ./= Λr[1]
-    end
-
-    for r = 1:R
-        maxval, indx = findmax(λtilde[r])
-        if λr[r][indx] > 0.0
-            global Qr[r] = reshape(ZZ[r][indx], fill(K, r+1)...) ./ maxval
-        end
-    end
-
-    Λr, λr, Q0r, Qr
 end
 
 

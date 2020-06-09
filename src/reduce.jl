@@ -256,3 +256,87 @@ function reconstruct_transTens(dcp::DecompMMTDg)
 
         return out
 end
+
+
+
+
+"""
+    TankReduction(Λ::Vector{Float64}, λ::Vector{Vector{Float64}},
+        Q0::Vector{Float64}, Q::Vector{<:Array{Float64}}, λ_indx::λindxMMTD) (intercept only)
+
+    Computes Tank Reduction of the MMTD (intercept only).
+
+    ### Example
+    ```julia
+    Λ = [0.1, 0.5, 0.4]
+    λ = [[0.4, 0.3, 0.3], [0.2, 0.5, 0.3]]
+    Q0 = [0.5, 0.5]
+    Q = [ reshape([0.8, 0.2, 0.3, 0.7],2,2), reshape([0.4, 0.6, 0.7, 0.3, 0.9, 0.1, 0.2, 0.8], 2,2,2) ]
+    λ_indx = build_λ_indx(3, 2)
+
+    tr = TankReduction(Λ, λ, Q0, Q, λ_indx)
+    ```
+"""
+function TankReduction(Λ::Vector{Float64}, λ::Vector{Vector{Float64}},
+    Q0::Vector{Float64}, Q::Vector{<:Array{Float64}}, λ_indx::λindxMMTD) # currently intercept only
+
+    # here each Q is organized with tos as rows and froms as columns
+
+    K = length(Q0)
+    R = length(Λ) - 1
+
+    Q_mats = [ reshape(Q[r], K, K^r) for r in 1:R ]
+
+    Z0 = Λ[1] .* Q0
+    Z = [ [ Matrix{Float64}(undef, K, K^r) for j = 1:λ_indx.lens[r] ] for r = 1:R ]
+    a = [ [ Vector{Float64}(undef, K) for j = 1:λ_indx.lens[r] ] for r = 1:R ]
+
+    for r = 1:R
+        for j = 1:λ_indx.lens[r]
+            Z[r][j] = Q_mats[r] .* Λ[r+1] .* λ[r][j]
+            a[r][j] = [ minimum( Z[r][j][k,:] ) for k = 1:K ]
+        end
+    end
+
+    global ZZ0 = deepcopy(Z0)
+    global ZZ = deepcopy(Z)
+
+    for r = 1:R
+        for j = 1:λ_indx.lens[r]
+            global ZZ0 += a[r][j]
+            for k = 1:K
+                global ZZ[r][j][k,:] .-= a[r][j][k]
+            end
+        end
+    end
+
+    global λtilde = deepcopy(λ)
+    for r = 1:R
+        for j = 1:λ_indx.lens[r]
+            global λtilde[r][j] = sum(ZZ[r][j][:,1])
+        end
+    end
+
+    Λr = vcat( sum(ZZ0), [ sum(λtilde[r]) for r = 1:R ] )
+    global λr = deepcopy(λtilde)
+    for r = 1:R
+        if Λr[r+1] > 0.0
+            global λr[r] ./= Λr[r+1]
+        end
+    end
+    global Q0r = deepcopy(ZZ0)
+    global Qr = [ zeros(Float64, fill(K, r+1)...) for r in 1:R ]
+
+    if Λr[1] > 0.0
+        global Q0r ./= Λr[1]
+    end
+
+    for r = 1:R
+        maxval, indx = findmax(λtilde[r])
+        if λr[r][indx] > 0.0
+            global Qr[r] = reshape(ZZ[r][indx], fill(K, r+1)...) ./ maxval
+        end
+    end
+
+    Λr, λr, Q0r, Qr
+end
