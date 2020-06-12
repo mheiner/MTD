@@ -787,7 +787,7 @@ end
 
 """
 mcmc!(model, n_keep[, save=true, report_filename="out_progress.txt",
-thin=1, jmpstart_iter=25, report_freq=500, monitor::Vector{Symbol}=[:lΛ, :lλ, :lQ0, :lQ])
+thin=1, jmpstart_iter=25, report_freq=500, monitor::Vector{Symbol}=[:lΛ, :lλ, :lQ0, :lQ], margQ::true ])
 """
 function mcmc!(model::ModMMTD, n_keep::Int;
     save::Bool=true,
