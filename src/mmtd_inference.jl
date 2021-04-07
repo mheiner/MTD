@@ -794,7 +794,7 @@ function mcmc!(model::ModMMTD, n_keep::Int;
     report_filename::String="out_progress.txt",
     thin::Int=1, jmpstart_iter::Int=25,
     report_freq::Int=10000,
-    monitor::Union{Vector{Symbol}, Nothing}=[:lΛ, :lλ, :lQ0, :lQ],
+    monitor::Union{Vector{Symbol}, Nothing}=[:lΛ, :lλ, :lQ0, :lQ, :Zζ],
     margQ::Bool=true)
 
     ## fix bson issue of recreating model prior structure
@@ -1144,13 +1144,72 @@ end
 
 
 """
-    addDecomp_postsims!(sims::Vector{Any}, model::ModMMTD; totalweight_thresh=0.001, maxiter=100, leftoversum_tol=1.0e-9)
+    addDecomp_postsims!(sims::Vector{Any}, model::ModMMTD; totalweight_thresh=0.001, maxiter=100, leftoversum_tol=1.0e-9, Qfc=false)
 
 Reconstruct and decompose transition probability tensor from MMTD posterior simulations. Adds aggregated level weights and
 lag involvment to each sample.
 
+If Qfc=true, the decomposition is based on the full conditional mean of Q0 and Q, which requires membership indicators.
 """
-function addDecomp_postsims!(sims, model::ModMMTD; totalweight_thresh=0.001, maxiter=100, leftoversum_tol=1.0e-9)
+function addDecomp_postsims!(sims, model::ModMMTD; totalweight_thresh=0.001, maxiter=100, leftoversum_tol=1.0e-9, Qfc=false)
+
+  if Qfc # calculate using full conditions of Q
+
+    addDecomp_postsims_Qfc!(sims, model; totalweight_thresh=totalweight_thresh, maxiter=maxiter, leftoversum_tol=leftoversum_tol)
+
+  else
+
+    for ii in 1:length(sims)
+
+      if typeof(sims[ii][:lλ]) <: Array{Any}
+        sims[ii][:lλ] = [ deepcopy(sims[ii][:lλ][j]) for j = 1:length(sims[ii][:lλ]) ] # correctly convert from BSON
+      end
+      if typeof(sims[ii][:lQ]) <: Array{Any}
+        sims[ii][:lQ] = [ deepcopy(sims[ii][:lQ][j]) for j = 1:length(sims[ii][:lQ]) ] # correctly convert from BSON
+      end
+
+      Omeg = transTensor_mmtd(model.L, model.R, model.K, model.λ_indx,
+      sims[ii][:lΛ], sims[ii][:lλ], sims[ii][:lQ0], sims[ii][:lQ], login=true)
+      dcp = reduce_transTens(TransTens(Omeg), totalweight_thresh=totalweight_thresh, maxiter=maxiter, leftoversum_tol=leftoversum_tol)
+      sims[ii][:Dlaginvolv] = deepcopy(dcp.involv)
+      sims[ii][:Dlevelweight] = deepcopy(dcp.level_lam_total)
+    end
+
+  end
+
+  return nothing
+end
+
+function fc_mean_lQ_mmtd(S::Vector{Int}, TT::Int,
+  prior_Q0::Vector{Float64}, prior_Q::Vector{<:Array{Float64}},
+  Zandζ::Matrix{Int},
+  λ_indx::λindxMMTD, L::Int, R::Int, K::Int)
+
+  N0, N = counttrans_mmtd(S, TT, Zandζ, λ_indx, L, R, K) # N is a vector of arrays
+
+  ## initialize
+  α0_Q0 = deepcopy(prior_Q0)
+  α0_Q = deepcopy(prior_Q) # vector of arrays
+  lmQ_mats = [ Matrix{Float64}(undef, K, K^r) for r in 1:R ]
+  lmQ_out = [ reshape(lmQ_mats[r], fill(K, r+1)...) for r in 1:R ]
+
+  α1_Q0 = α0_Q0 .+ N0
+  lmQ0_out = log.( α1_Q0 ./ sum(α1_Q0) )
+
+  for r in 1:R
+    ncol = K^r
+    α1_Q = α0_Q[r] .+ N[r]
+    α1_Q_mat = reshape(α1_Q, (K, ncol))
+    for j in 1:ncol
+      lmQ_mats[r][:,j] = log.(α1_Q_mat[:,j] ./ sum(α1_Q_mat[:,j]))
+    end
+    lmQ_out[r] = reshape(lmQ_mats[r], fill(K, r+1)...)
+  end
+
+  lmQ0_out, lmQ_out
+end
+
+function addDecomp_postsims_Qfc!(sims, model::ModMMTD; totalweight_thresh=0.001, maxiter=100, leftoversum_tol=1.0e-9)
 
   for ii in 1:length(sims)
 
@@ -1160,13 +1219,25 @@ function addDecomp_postsims!(sims, model::ModMMTD; totalweight_thresh=0.001, max
     if typeof(sims[ii][:lQ]) <: Array{Any}
       sims[ii][:lQ] = [ deepcopy(sims[ii][:lQ][j]) for j = 1:length(sims[ii][:lQ]) ] # correctly convert from BSON
     end
+    if typeof(model.prior.Q) <: Array{Any}
+      model.prior.Q = [ deepcopy(model.prior.Q[j]) for j = 1:length(model.prior.Q) ] # correctly convert from BSON
+    end
+
+    # calculate full conditional mean for Q0, Q
+
+    Zandζnow = ZζtoZandζ(sims[ii][:Zζ], model.λ_indx)
+
+    lmQ0, lmQ = fc_mean_lQ_mmtd(model.S, model.TT,
+      model.prior.Q0, model.prior.Q, Zandζnow,
+      model.λ_indx, model.L, model.R, model.K)
 
     Omeg = transTensor_mmtd(model.L, model.R, model.K, model.λ_indx,
-      sims[ii][:lΛ], sims[ii][:lλ], sims[ii][:lQ0], sims[ii][:lQ], login=true)
+      sims[ii][:lΛ], sims[ii][:lλ], lmQ0, lmQ, login=true)
     dcp = reduce_transTens(TransTens(Omeg), totalweight_thresh=totalweight_thresh, maxiter=maxiter, leftoversum_tol=leftoversum_tol)
     sims[ii][:Dlaginvolv] = deepcopy(dcp.involv)
     sims[ii][:Dlevelweight] = deepcopy(dcp.level_lam_total)
   end
 
   return nothing
+
 end
